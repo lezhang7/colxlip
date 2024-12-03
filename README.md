@@ -12,10 +12,9 @@ introduces text-conditioned attention pooling on top of local image tokens to pr
 timodal retrieval benchmarks, as well as, our newly introduced fine-grained retrieval task which evaluates vision-
 language models’ ability to retrieve partial image content. Furthermore, our experiments demonstrate the effectiveness of FLAIR trained on 30M image-text pairs in capturing fine-grained visual information, including zero-shot semantic segmentation, outperforming models trained on billions of pairs.
 
-## Main Difference from Previous Methods
-![](assets/method_compare_github.png "FLAIR compared with previous CLIP-based methods")
-
-
 ## Methodology
 ![](assets/methodology_github.png "A general workflow for FLAIR")
+
+## Code and Model
+Code and pre-trained models will be released soon.
 
