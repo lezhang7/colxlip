@@ -1,3 +1,10 @@
+"""
+This code is adapted from OpenCLIP:
+https://github.com/mlfoundations/open_clip/blob/main/src/open_clip/factory.py
+
+The code integrates additional modifications and extensions to support the FLAIR models.
+Original authors: ML Foundations.
+"""
 import json
 import logging
 import os

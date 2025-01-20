@@ -1,3 +1,10 @@
+"""
+This code is adapted from OpenCLIP:
+https://github.com/mlfoundations/open_clip/blob/main/src/open_clip_train/params.py
+
+The code integrates additional modifications and extensions to support the FLAIR models.
+Original authors: ML Foundations.
+"""
 import argparse
 import ast
 

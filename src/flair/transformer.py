@@ -1,3 +1,11 @@
+"""
+This code is adapted from OpenCLIP:
+https://github.com/mlfoundations/open_clip/blob/main/src/open_clip/transformer.py
+
+The code integrates additional modifications and extensions to support the FLAIR models.
+Original authors: ML Foundations.
+"""
+
 from collections import OrderedDict
 import math
 from typing import Callable, List, Optional, Sequence, Tuple, Union
