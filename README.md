@@ -1,5 +1,4 @@
-# FLAIR: VLM with Fine-grained Language-informed Image Representations
-
+# FLAIR: VLM with Fine-grained Language-informed Image Representations [arxiv](https://arxiv.org/abs/2412.03561)
 **Authors:** Rui Xiao, Sanghwan Kim, Mariana-Iuliana Georgescu, Zeynep Akata, Stephan Alaniz
 
 ## Abstract
