@@ -454,26 +454,6 @@ def get_model_tokenize_cfg(model):
     return cfg
 
 
-def random_latent_cropping(local_image_tokens, crop_size=32, num_crops=3):
-    """
-    :param local_image_tokens: Raw output from the image transformer, should be of shape (B, L, D)
-    :param crop_size: a crop of tokens, indicating a area in the image
-    :param num_crops: how many crops we want to have
-    :return:
-    """
-    B, L, D = local_image_tokens.shape
-
-    max_start_index = L - crop_size
-    starting_indices = sorted(torch.randperm(max_start_index)[:num_crops].tolist())
-    averaged_crops_list = []
-    for start in starting_indices:
-        crop = local_image_tokens[:, start:start + crop_size, :]
-        averaged_crop = crop.mean(dim=1)  # Average over the 'crop_size' dimension (dim=1)
-        averaged_crops_list.append(averaged_crop)
-    averaged_crops = torch.stack(averaged_crops_list, dim=1)  #should be (B, Num_crops, D)
-    return averaged_crops
-
-
 
 class FLAIR(nn.Module):
     output_dict: torch.jit.Final[bool]
@@ -559,21 +539,6 @@ class FLAIR(nn.Module):
                 local_text_tokens = local_text_tokens @ self.text_projection
 
         return global_text_token, local_text_tokens
-
-    def get_logits(self, image, text):
-        image_embeddings = self.encode_image(image, normalize=True)
-        if self.output_text_tokens:
-            text_features, text_tokens = self.encode_text(text, normalize=True, return_tokens=True)
-            image_features = self.visual_proj(text_tokens, image_embeddings, image_embeddings).squeeze(1)
-            #if we use global attention pooling, we get image_features of shape (128, 128, 512)
-            image_logits = self.logit_scale.exp() * image_features @ text_features.T
-            if self.logit_bias is not None:
-                image_logits += self.logit_bias
-            text_logits = image_logits.T
-        else:
-            text_features = self.encode_text(text, normalize=True)
-            raise NotImplementedError("Please use a normal CLIP class if you want a normal CLIP : )")
-        return image_logits, text_logits
 
     def forward(
             self,

@@ -376,8 +376,7 @@ def retrieval_on_split(keyword, model, txt_loader, img_loader, img2txt_dict, txt
 
         retrieval_metrics = compute_retrieval(similarity_scores=similarity_scores,
                                               txt2img=new_txt2img_dict,
-                                              img2txt=new_img2txt_dict
-                                              )
+                                              img2txt=new_img2txt_dict)
 
         if keyword != '':
             temp_retrieval_metrics = {}
