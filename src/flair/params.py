@@ -225,6 +225,18 @@ def parse_args(args):
         help="If enabled, then we only merge subsequent captions"
     )
     parser.add_argument(
+        "--use-flair-loss",
+        default=False,
+        action="store_true",
+        help="Whether to use the text-conditioned sigmoid loss or not."
+    )
+    parser.add_argument(
+        "--add-mps-loss",
+        default=False,
+        action="store_true",
+        help="Whether to add the multi-positive loss or not"
+    )
+    parser.add_argument(
         "--directly-use-attn-weights",
         default=False,
         action="store_true",
@@ -621,7 +633,7 @@ def parse_args(args):
     )
     parser.add_argument(
         "--caption-sampling-mode",
-        choices=["only_raw_caption", "raw_and_random", "random", "short", "dreamlip", "short-long-mixed-random", "variable_merge"],
+        choices=["only_raw_caption", "raw_and_random", "random", "short", "dreamlip", "short-long-mixed-random", "diverse_sampling"],
         default="random",
         help="Floating point precision."
     )

@@ -28,6 +28,7 @@ from open_clip.pretrained import is_pretrained_cfg, get_pretrained_cfg, download
 from open_clip.transform import image_transform_v2, AugmentationCfg, PreprocessCfg, merge_preprocess_dict, \
     merge_preprocess_kwargs, image_transform
 from open_clip.tokenizer import HFTokenizer, SimpleTokenizer, DEFAULT_CONTEXT_LENGTH
+from .loss import FlairLoss
 
 HF_HUB_PREFIX = 'hf-hub:'
 _MODEL_CONFIG_PATHS = [Path(__file__).parent / f"model_configs/"]
@@ -395,3 +396,21 @@ def create_model_and_transforms(
     )
 
     return model, preprocess_train, preprocess_val
+
+
+def create_loss(args):
+
+    if args.use_flair_loss:
+        if args.add_mps_loss:
+            return FlairLoss(rank=args.rank,
+                            world_size=args.world_size,
+                            num_cap_per_img=args.num_sampled_captions,
+                            added_mps_loss=True)
+        else:
+            return FlairLoss(rank=args.rank,
+                             world_size=args.world_size,
+                             num_cap_per_img=args.num_sampled_captions,
+                             added_mps_loss=False)
+
+    else:
+        raise NotImplementedError("Loss function for the given configuration is not implemented.")

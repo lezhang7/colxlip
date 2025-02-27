@@ -8,6 +8,8 @@ import random
 from datetime import datetime
 import numpy as np
 import torch
+from torch import optim
+from torch.cuda.amp import GradScaler
 from huggingface_hub import hf_hub_download
 
 try:
@@ -25,13 +27,15 @@ try:
 except ImportError:
     hvd = None
 
-from flair import create_model_and_transforms, trace_model, get_tokenizer
-from flair.inference_data import get_data
-from flair.train import evaluate
 from open_clip_train.distributed import is_master, init_distributed_device, broadcast_object
 from open_clip_train.logger import setup_logging
-from flair.params import parse_args
+from open_clip_train.scheduler import cosine_lr, const_lr, const_lr_cooldown
+from open_clip_train.file_utils import pt_load, check_exists, start_sync_process, remote_sync
 
+from flair.params import parse_args
+from flair.factory import create_model_and_transforms, get_tokenizer, create_loss
+from flair.train import train_one_epoch, evaluate
+from flair.data import get_data
 
 LATEST_CHECKPOINT_NAME = "epoch_latest.pt"
 
@@ -47,7 +51,7 @@ def natural_key(string_):
     return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_.lower())]
 
 
-def get_latest_checkpoint(path: str, remote : bool):
+def get_latest_checkpoint(path: str, remote: bool):
     # as writen, this glob recurses, so can pick up checkpoints across multiple sub-folders
     if remote:
         result = subprocess.run(["aws", "s3", "ls", path + "/"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -62,6 +66,7 @@ def get_latest_checkpoint(path: str, remote : bool):
         return checkpoints[-1]
     return None
 
+
 def download_weights_from_hf(model_repo, filename):
     # Define the custom cache directory relative to the current script
     cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained")
@@ -69,6 +74,7 @@ def download_weights_from_hf(model_repo, filename):
         os.makedirs(cache_dir, exist_ok=True)
     local_path = hf_hub_download(repo_id=model_repo, filename=filename, cache_dir=cache_dir)
     return local_path
+
 
 def main(args):
     args = parse_args(args)
@@ -101,7 +107,7 @@ def main(args):
         ])
 
     resume_latest = args.resume == 'latest'
-    log_base_path = os.path.join(args.logs, args.name)
+    log_base_path = os.path.join(args.logs_dir, args.name)
     args.log_path = None
     if is_master(args, local=args.log_local):
         os.makedirs(log_base_path, exist_ok=True)
@@ -129,7 +135,65 @@ def main(args):
     else:
         args.tensorboard_path = ''
 
+    if resume_latest:
+        resume_from = None
+        checkpoint_path = args.checkpoint_path
+        # If using remote_sync, need to check the remote instead of the local checkpoints folder.
+        if args.remote_sync is not None:
+            checkpoint_path = os.path.join(args.remote_sync, args.name, "checkpoints")
+            if args.save_most_recent:
+                print('Error. Cannot use save-most-recent with remote_sync and resume latest.')
+                return -1
+            if args.remote_sync_protocol != 's3':
+                print('Error. Sync protocol not supported when using resume latest.')
+                return -1
+        if is_master(args):
+            # Checking for existing checkpoint via master rank only. It is possible for
+            # different rank processes to see different files if a shared file-system is under
+            # stress, however it's very difficult to fully work around such situations.
+            if args.save_most_recent:
+                # if --save-most-recent flag is set, look for latest at a fixed filename
+                resume_from = os.path.join(checkpoint_path, LATEST_CHECKPOINT_NAME)
+                if not os.path.exists(resume_from):
+                    # If no latest checkpoint has been saved yet, don't try to resume
+                    resume_from = None
+            else:
+                # otherwise, list checkpoint dir contents and pick the newest checkpoint
+                resume_from = get_latest_checkpoint(checkpoint_path, remote=args.remote_sync is not None)
+            if resume_from:
+                logging.info(f'Found latest resume checkpoint at {resume_from}.')
+            else:
+                logging.info(f'No latest resume checkpoint found in {checkpoint_path}.')
+        if args.distributed:
+            # sync found checkpoint path to all ranks
+            resume_from = broadcast_object(args, resume_from)
+        args.resume = resume_from
+
+    if args.copy_codebase:
+        copy_codebase(args)
+
+    # start the sync proces if remote-sync is not None
     remote_sync_process = None
+    if is_master(args) and args.remote_sync is not None:
+        # first make sure it works
+        result = remote_sync(
+            os.path.join(args.logs_dir, args.name),
+            os.path.join(args.remote_sync, args.name),
+            args.remote_sync_protocol
+        )
+        if result:
+            logging.info('remote sync successful.')
+        else:
+            logging.info('Error: remote sync failed. Exiting.')
+            return -1
+        # if all looks good, start a process to do this every args.remote_sync_frequency seconds
+        remote_sync_process = start_sync_process(
+            args.remote_sync_frequency,
+            os.path.join(args.logs_dir, args.name),
+            os.path.join(args.remote_sync, args.name),
+            args.remote_sync_protocol
+        )
+        remote_sync_process.start()
 
     if args.precision == 'fp16':
         logging.warning(
@@ -147,20 +211,19 @@ def main(args):
     else:
         logging.info(f'Running with a single process. Device {args.device}.')
 
+    dist_model = None
 
     if isinstance(args.force_image_size, (tuple, list)) and len(args.force_image_size) == 1:
         # arg is nargs, single (square) image size list -> int
         args.force_image_size = args.force_image_size[0]
+
     random_seed(args.seed, 0)
     model_kwargs = {}
-    if args.siglip:
-        model_kwargs['init_logit_scale'] = np.log(10)
-        model_kwargs['init_logit_bias'] = -10
 
-    #based on huggingface model name, download the pre-trained weights, the downloaded path is passed as the 'pretrained' arguments
+    # based on huggingface model name, download the pre-trained weights, the downloaded path is passed as the 'pretrained' arguments
     huggingface_model_name, huggingface_repo_name = args.huggingface_model_name, args.huggingface_repo_name
-
     args.pretrained = download_weights_from_hf(model_repo=huggingface_repo_name, filename=huggingface_model_name)
+
     model, preprocess_train, preprocess_val = create_model_and_transforms(
         args.model,
         args.pretrained,
@@ -183,11 +246,14 @@ def main(args):
     model.to(device)
     random_seed(args.seed, args.rank)
 
+    if args.grad_checkpointing:
+        model.set_grad_checkpointing()
+
     if is_master(args):
         logging.info("Model:")
         logging.info(f"{str(model)}")
         logging.info("Params:")
-        params_file = os.path.join(args.logs, args.name, "params.txt")
+        params_file = os.path.join(args.logs_dir, args.name, "params.txt")
         with open(params_file, "w") as f:
             for name in sorted(vars(args)):
                 val = getattr(args, name)
@@ -203,12 +269,56 @@ def main(args):
             ddp_args['static_graph'] = True
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
 
-
     # create optimizer and scaler
     optimizer = None
     scaler = None
+
+    if args.train_data or args.dataset_type == "synthetic":
+        assert not args.trace, 'Cannot train with traced model'
+
+        exclude = lambda n, p: p.ndim < 2 or "bn" in n or "ln" in n or "bias" in n or 'logit_scale' in n
+        include = lambda n, p: not exclude(n, p)
+
+        named_parameters = list(model.named_parameters())
+        gain_or_bias_params = [p for n, p in named_parameters if exclude(n, p) and p.requires_grad]
+        rest_params = [p for n, p in named_parameters if include(n, p) and p.requires_grad]
+
+        optimizer = optim.AdamW(
+            [
+                {"params": gain_or_bias_params, "weight_decay": 0.},
+                {"params": rest_params, "weight_decay": args.wd},
+            ],
+            lr=args.lr,
+            betas=(args.beta1, args.beta2),
+            eps=args.eps,
+        )
+        if args.horovod:
+            optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+            hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+            hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+
+        scaler = GradScaler() if args.precision == "amp" else None
+
     # optionally resume from a checkpoint
     start_epoch = 0
+    if args.resume is not None:
+        checkpoint = pt_load(args.resume, map_location='cpu')
+        if 'epoch' in checkpoint:
+            # resuming a train checkpoint w/ epoch and optimizer state
+            start_epoch = checkpoint["epoch"]
+            sd = checkpoint["state_dict"]
+            if not args.distributed and next(iter(sd.items()))[0].startswith('module'):
+                sd = {k[len('module.'):]: v for k, v in sd.items()}
+            model.load_state_dict(sd)
+            if optimizer is not None:
+                optimizer.load_state_dict(checkpoint["optimizer"])
+            if scaler is not None and 'scaler' in checkpoint:
+                scaler.load_state_dict(checkpoint['scaler'])
+            logging.info(f"=> resuming checkpoint '{args.resume}' (epoch {start_epoch})")
+        else:
+            # loading a bare (model only) checkpoint for fine-tune or evaluation
+            model.load_state_dict(checkpoint)
+            logging.info(f"=> loaded checkpoint '{args.resume}' (epoch {start_epoch})")
 
     # initialize datasets
     tokenizer = get_tokenizer(args.model)
@@ -222,10 +332,30 @@ def main(args):
 
     # create scheduler if train
     scheduler = None
+    if 'train' in data and optimizer is not None:
+        total_steps = (data["train"].dataloader.num_batches // args.accum_freq) * args.epochs
+        if args.lr_scheduler == "cosine":
+            scheduler = cosine_lr(optimizer, args.lr, args.warmup, total_steps)
+        elif args.lr_scheduler == "const":
+            scheduler = const_lr(optimizer, args.lr, args.warmup, total_steps)
+        elif args.lr_scheduler == "const-cooldown":
+            assert args.epochs_cooldown is not None, \
+                "Please specify the number of cooldown epochs for this lr schedule."
+            cooldown_steps = (data["train"].dataloader.num_batches // args.accum_freq) * args.epochs_cooldown
+            scheduler = const_lr_cooldown(
+                optimizer, args.lr, args.warmup, total_steps,
+                cooldown_steps, args.lr_cooldown_power, args.lr_cooldown_end)
+        else:
+            logging.error(
+                f'Unknown scheduler, {args.lr_scheduler}. Available options are: cosine, const, const-cooldown.')
+            exit(1)
 
     # determine if this worker should save logs and checkpoints. only do so if it is rank == 0
-    args.save_logs = args.logs and args.logs.lower() != 'none' and is_master(args)
+    args.save_logs = args.logs_dir and args.logs_dir.lower() != 'none' and is_master(args)
     writer = None
+    if args.save_logs and args.tensorboard:
+        assert tensorboard is not None, "Please install tensorboard."
+        writer = tensorboard.SummaryWriter(args.tensorboard_path)
 
     if args.wandb and is_master(args):
         assert wandb is not None, 'Please install wandb.'
@@ -265,13 +395,18 @@ def main(args):
         evaluate(model, data, start_epoch, args, tb_writer=writer, tokenizer=tokenizer)
         return
 
+    loss = create_loss(args)
 
     for epoch in range(start_epoch, args.epochs):
         if is_master(args):
             logging.info(f'Start epoch {epoch}')
+
+        train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args, tb_writer=writer)
         completed_epoch = epoch + 1
 
-        if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2', 'retrieval_coco', 'retrieval_flickr', 'retrieval_cc3m_train', 'retrieval_urban_1k', 'retrieval_iiw', 'retrieval_dci', 'sharegpt4v-1k', 'sharegpt4v-10k')):
+        if any(v in data for v in (
+                'val', 'imagenet-val', 'imagenet-v2', 'retrieval_coco', 'retrieval_flickr',
+                'retrieval_urban_1k', 'retrieval_iiw', 'retrieval_dci', 'sharegpt4v-1k', 'sharegpt4v-10k')):
             evaluate(model, data, completed_epoch, args, tb_writer=writer, tokenizer=tokenizer)
 
         # Saving checkpoints.
@@ -286,7 +421,7 @@ def main(args):
                 checkpoint_dict["scaler"] = scaler.state_dict()
 
             if completed_epoch == args.epochs or (
-                args.save_frequency > 0 and (completed_epoch % args.save_frequency) == 0
+                    args.save_frequency > 0 and (completed_epoch % args.save_frequency) == 0
             ):
                 torch.save(
                     checkpoint_dict,
@@ -306,6 +441,37 @@ def main(args):
 
     if args.wandb and is_master(args):
         wandb.finish()
+
+    # run a final sync.
+    if remote_sync_process is not None:
+        logging.info('Final remote sync.')
+        remote_sync_process.terminate()
+        result = remote_sync(
+            os.path.join(args.logs_dir, args.name),
+            os.path.join(args.remote_sync, args.name),
+            args.remote_sync_protocol
+        )
+        if result:
+            logging.info('Final remote sync successful.')
+        else:
+            logging.info('Final remote sync failed.')
+
+
+def copy_codebase(args):
+    from shutil import copytree, ignore_patterns
+    new_code_path = os.path.join(args.logs_dir, args.name, "code")
+    if os.path.exists(new_code_path):
+        print(
+            f"Error. Experiment already exists at {new_code_path}. Use --name to specify a new experiment."
+        )
+        return -1
+    print(f"Copying codebase to {new_code_path}")
+    current_code_path = os.path.realpath(__file__)
+    for _ in range(3):
+        current_code_path = os.path.dirname(current_code_path)
+    copytree(current_code_path, new_code_path, ignore=ignore_patterns('log', 'logs', 'wandb'))
+    print("Done copying code.")
+    return 1
 
 
 if __name__ == "__main__":

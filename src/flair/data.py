@@ -1,16 +1,17 @@
-import ast
 import json
 import logging
 import math
 import os
 import re
+import sys
 import braceexpand
 from dataclasses import dataclass
-from multiprocessing import Value
 import random
+
 
 import webdataset as wds
 from PIL import Image
+from open_clip_train.data import get_dataset_size, detshuffle2, ResampledShards2, tarfile_to_samples_nothrow, SharedEpoch
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler, IterableDataset, get_worker_info
 from torch.utils.data.distributed import DistributedSampler
 import collections
@@ -50,6 +51,10 @@ def draw_numbers(n, k=4):
         return random.choices(population, k=k)
 
 
+_SHARD_SHUFFLE_SIZE = 2000
+_SHARD_SHUFFLE_INITIAL = 500
+_SAMPLE_SHUFFLE_SIZE = 5000
+_SAMPLE_SHUFFLE_INITIAL = 1000
 
 
 def draw_numbers(n, k=4):
@@ -58,17 +63,6 @@ def draw_numbers(n, k=4):
         return random.sample(population, k)
     else:
         return random.choices(population, k=k)
-
-
-class SharedEpoch:
-    def __init__(self, epoch: int = 0):
-        self.shared_epoch = Value('i', epoch)
-
-    def set_value(self, epoch):
-        self.shared_epoch.value = epoch
-
-    def get_value(self):
-        return self.shared_epoch.value
 
 
 @dataclass
@@ -105,27 +99,6 @@ def expand_urls(urls, weights=None):
         all_urls = list(urls)
         return all_urls, weights
 
-
-def get_dataset_size(shards):
-    shards_list, _ = expand_urls(shards)
-    dir_path = os.path.dirname(shards_list[0])
-    sizes_filename = os.path.join(dir_path, 'sizes.json')
-    len_filename = os.path.join(dir_path, '__len__')
-    if os.path.exists(sizes_filename):
-        sizes = json.load(open(sizes_filename, 'r'))
-        total_size = sum([int(sizes[os.path.basename(shard)]) for shard in shards_list])
-    elif os.path.exists(len_filename):
-        # FIXME this used to be eval(open(...)) but that seemed rather unsafe
-        total_size = ast.literal_eval(open(len_filename, 'r').read())
-    else:
-        total_size = None  # num samples undefined
-        # some common dataset sizes (at time of authors last download)
-        # CC3M (train): 2905954
-        # CC12M: 10968539
-        # LAION-400M: 407332084
-        # LAION-2B (english): 2170337258
-    num_shards = len(shards_list)
-    return total_size, num_shards
 
 
 def count_samples(dataloader):
@@ -170,11 +143,58 @@ def pytorch_worker_seed(increment=0):
     return wds.utils.pytorch_worker_seed()
 
 
+def sample_dict(text, k=3, tokenizer=None, sampling_mode='diverse_sampling', pixelprose=False, max_merged_num=3):
+
+    if sampling_mode == 'diverse_sampling':
+        if pixelprose:
+            raw_caption = text["caption"]
+            captions_list = split_caption(raw_caption)
+        else:
+            captions_list = (text['raw_caption'] + text['shortIB_captions'] + text['longIB_captions'] +
+                             text['shortSV_captions'] + text['longSV_captions'] +
+                             text['shortLLA_captions'] + text['longLLA_captions'])
+        n_captions = len(captions_list)
+        sampled_sentences = []
+        for _ in range(k):
+            merged_num = random.randint(1, max_merged_num)
+            if merged_num == 1:
+                # Sample one caption
+                sampled_sentence = random.choice(captions_list)
+                sampled_sentences.append(sampled_sentence)
+            else:
+                prob_flag = 0.5 # 50% merging subsequent captions, 50% merging captions from random positions
+                if random.random() < prob_flag:
+                    sampled_sentence_list = random_sample_from_list(
+                        captions_list, k=1, merged_num=merged_num)
+                    sampled_sentences.extend(sampled_sentence_list)
+                else:
+                    # Randomly select captions to merge
+                    if n_captions >= merged_num:
+                        captions_to_merge = random.sample(captions_list, merged_num)
+                    else:
+                        captions_to_merge = [random.choice(captions_list) for _ in range(merged_num)]
+                    # Merge the captions
+                    sampled_sentence = '. '.join(captions_to_merge)
+                    sampled_sentences.append(sampled_sentence)
+        tokenized_sentences = tokenizer(sampled_sentences)
+        return tokenized_sentences
+    else:
+        raise NotImplementedError('Please select a valid sampling method')
+
+
+def get_train_val_dataset_fn(dataset_type):
+    if dataset_type == "webdataset":
+        return get_wds_dataset
+    else:
+        raise ValueError(f"Unsupported training dataset type: {dataset_type}")
 
 def get_data(args, preprocess_fns, epoch=0, tokenizer=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
+    if args.train_data:
+        data["train"] = get_train_val_dataset_fn(args.train_dataset_type)(
+            args, preprocess_train, is_train=True, epoch=epoch, tokenizer=tokenizer)
     if args.retrieval_coco:
         data["retrieval_coco"] = get_retrieval_coco_dataset(args=args, preprocess_fn=preprocess_val,
                                                             tokenizer=tokenizer, output_dict=True)
@@ -211,6 +231,134 @@ def get_data(args, preprocess_fns, epoch=0, tokenizer=None):
                                                                              dataset_name='sharegpt4v-10k')
     return data
 
+
+
+
+def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokenizer=None):
+    if is_train:
+        input_shards = args.train_data
+    else:
+        input_shards = args.val_data
+    assert input_shards is not None
+    resampled = getattr(args, 'dataset_resampled', False) and is_train
+
+    num_shards = None
+    if is_train:
+        if args.train_num_samples is not None:
+            num_samples = args.train_num_samples
+        else:
+            num_samples, num_shards = get_dataset_size(input_shards)
+            if not num_samples:
+                raise RuntimeError(
+                    'Currently, the number of dataset samples must be specified for the training dataset. '
+                    'Please specify it via `--train-num-samples` if no dataset length info is present.')
+    else:
+        num_samples = args.val_num_samples or 0
+
+    shared_epoch = SharedEpoch(epoch=epoch)  # create a shared epoch store to sync epoch to dataloader worker proc
+
+    if is_train and args.train_data_upsampling_factors is not None:
+        assert resampled, "--train_data_upsampling_factors is only supported when sampling with replacement (with --dataset-resampled)."
+
+    if resampled:
+        pipeline = [ResampledShards2(
+            input_shards,
+            weights=args.train_data_upsampling_factors,
+            deterministic=True,
+            epoch=shared_epoch,
+        )]
+    else:
+        pipeline = [wds.SimpleShardList(input_shards)]
+
+    # at this point we have an iterator over all the shards
+    if is_train:
+        if not resampled:
+            pipeline.extend([
+                detshuffle2(
+                    bufsize=_SHARD_SHUFFLE_SIZE,
+                    initial=_SHARD_SHUFFLE_INITIAL,
+                    seed=args.seed,
+                    epoch=shared_epoch,
+                ),
+                wds.split_by_node,
+                wds.split_by_worker,
+            ])
+        pipeline.extend([
+            # at this point, we have an iterator over the shards assigned to each worker at each node
+            tarfile_to_samples_nothrow,  # wds.tarfile_to_samples(handler=log_and_continue),
+            wds.shuffle(
+                bufsize=_SAMPLE_SHUFFLE_SIZE,
+                initial=_SAMPLE_SHUFFLE_INITIAL,
+            ),
+        ])
+    else:
+        pipeline.extend([
+            wds.split_by_worker,
+            # at this point, we have an iterator over the shards assigned to each worker
+            wds.tarfile_to_samples(handler=log_and_continue),
+        ])
+
+
+    pipeline.extend([
+        wds.select(filter_no_caption_or_no_image_json),
+        wds.decode("pilrgb", handler=log_and_continue),
+        wds.rename(image="jpg;png;jpeg;webp", text="json"),
+        wds.map_dict(image=preprocess_img,
+                     text=lambda text: sample_dict(text, k=args.num_sampled_captions, tokenizer=tokenizer,
+                                                   sampling_mode=args.caption_sampling_mode,
+                                                   pixelprose=args.pixelprose,
+                                                   max_merged_num=args.max_merged_num)),
+        wds.to_tuple("image", "text"),
+        wds.batched(args.batch_size, partial=not is_train)
+    ])
+
+    dataset = wds.DataPipeline(*pipeline)
+
+    if is_train:
+        if not resampled:
+            num_shards = num_shards or len(expand_urls(input_shards)[0])
+            assert num_shards >= args.workers * args.world_size, 'number of shards must be >= total workers'
+        # roll over and repeat a few samples to get same number of full batches on each node
+        round_fn = math.floor if floor else math.ceil
+
+        global_batch_size = args.batch_size * args.world_size
+        num_batches = round_fn(num_samples / global_batch_size)
+        num_workers = max(1, args.workers)
+        num_worker_batches = round_fn(num_batches / num_workers)  # per dataloader worker
+        num_batches = num_worker_batches * num_workers
+        num_samples = num_batches * global_batch_size
+        dataset = dataset.with_epoch(num_worker_batches)  # each worker is iterating over this
+    else:
+        # last batches are partial, eval is done on single (master) node
+        num_batches = math.ceil(num_samples / args.batch_size)
+
+    dataloader = wds.WebLoader(
+        dataset,
+        batch_size=None,
+        shuffle=False,
+        num_workers=args.workers,
+        persistent_workers=args.workers > 0,
+    )
+
+    # FIXME not clear which approach is better, with_epoch before vs after dataloader?
+    # hoping to resolve via https://github.com/webdataset/webdataset/issues/169
+    # if is_train:
+    #     # roll over and repeat a few samples to get same number of full batches on each node
+    #     global_batch_size = args.batch_size * args.world_size
+    #     num_batches = math.ceil(num_samples / global_batch_size)
+    #     num_workers = max(1, args.workers)
+    #     num_batches = math.ceil(num_batches / num_workers) * num_workers
+    #     num_samples = num_batches * global_batch_size
+    #     dataloader = dataloader.with_epoch(num_batches)
+    # else:
+    #     # last batches are partial, eval is done on single (master) node
+    #     num_batches = math.ceil(num_samples / args.batch_size)
+
+    # add meta-data to dataloader instance for convenience
+    dataloader.num_batches = num_batches
+    dataloader.num_samples = num_samples
+
+    return DataInfo(dataloader=dataloader, shared_epoch=shared_epoch)
 
 
 
@@ -302,29 +450,6 @@ def read_flickr_pairs(root_dir, split='train'):
             })
             cap_id += 1
         img_id += 1
-    return data_list
-
-
-def read_cc3m_pairs(root_dir, split='train_retrieval'):
-    if split == 'train_retrieval':
-        captions_file = os.path.join(root_dir, "annotations", "annotations.json")
-    else:
-        raise NotImplementedError("the fine-grained retrieval on CC3M val is still TODO")
-
-    with open(captions_file, 'r') as f:
-        cc3m_data = json.load(f)['annotations']  #should be a list of dict
-
-    data_list = []
-    cap_id = 0
-    for annotation in cc3m_data:
-        image_path = os.path.join(root_dir, 'images', annotation['image'])
-        data_list.append({
-            'image': image_path,
-            'caption': annotation['caption'],
-            'image_id': annotation['image_id'],
-            'caption_id': cap_id
-        })
-        cap_id += 1
     return data_list
 
 
@@ -501,6 +626,60 @@ def pre_tokenize(tokenizer, data_list):
     return data_list
 
 
+class ResampledShards2(IterableDataset):
+    """An iterable dataset yielding a list of urls."""
+
+    def __init__(
+            self,
+            urls,
+            weights=None,
+            nshards=sys.maxsize,
+            worker_seed=None,
+            deterministic=False,
+            epoch=-1,
+    ):
+        """Sample shards from the shard list with replacement.
+
+        :param urls: a list of URLs as a Python list or brace notation string
+        """
+        super().__init__()
+        urls, weights = expand_urls(urls, weights)
+        self.urls = urls
+        self.weights = weights
+        if self.weights is not None:
+            assert len(self.urls) == len(self.weights), \
+                f"Number of urls {len(self.urls)} and weights {len(self.weights)} should match."
+        assert isinstance(self.urls[0], str)
+        self.nshards = nshards
+        self.rng = random.Random()
+        self.worker_seed = worker_seed
+        self.deterministic = deterministic
+        self.epoch = epoch
+
+    def __iter__(self):
+        """Return an iterator over the shards."""
+        if isinstance(self.epoch, SharedEpoch):
+            epoch = self.epoch.get_value()
+        else:
+            # NOTE: this is epoch tracking is problematic in a multiprocess (dataloader workers or train)
+            # situation as different workers may wrap at different times (or not at all).
+            self.epoch += 1
+            epoch = self.epoch
+        if self.deterministic:
+            # reset seed w/ epoch if deterministic
+            if self.worker_seed is None:
+                # pytorch worker seed should be deterministic due to being init by arg.seed + rank + worker id
+                seed = pytorch_worker_seed(epoch)
+            else:
+                seed = self.worker_seed() + epoch
+            self.rng.seed(seed)
+        for _ in range(self.nshards):
+            if self.weights is None:
+                yield dict(url=self.rng.choice(self.urls))
+            else:
+                yield dict(url=self.rng.choices(self.urls, weights=self.weights, k=1)[0])
+
+
 class FlickrTextDataset(Dataset):
     def __init__(self, root_dir, transform=None, split='train', tokenizer=None):
         self.root_dir = root_dir
@@ -596,41 +775,6 @@ class COCOTextDataset(Dataset):
         else:
             return caption
 
-
-class CC3MTextDataset(Dataset):
-    '''
-    Only loading captions and captions ID. Used in Text-conditioned setting. Only in validation
-    Note that we are using a different retrieval mode here
-    '''
-
-    def __init__(self, root_dir, transform=None, split='train_retrieval', tokenizer=None, sampling_mode=None,
-                 num_samples=None):
-        self.root_dir = root_dir
-        self.transform = transform
-        self.split = split
-        self.sampling_mode = sampling_mode
-        self.num_samples = num_samples
-        #create data list
-        logging.info(f"creating dataset list...")
-        data_list = read_cc3m_pairs(root_dir=root_dir, split=split)
-        logging.info(f"dataset list created, pretokenizing...")
-        self.data_list = pre_tokenize(tokenizer=tokenizer, data_list=data_list)
-        logging.info(f"pretokenization finished...")
-        self.img2txt_dict, self.txt2img_dict = map_img_cap(self.data_list)
-        #adding two dictionaries indicating the mapping between image index and text index
-
-    def __len__(self):
-        return len(self.data_list)
-
-    def __getitem__(self, idx):
-        data = self.data_list[idx]
-        caption = data["caption"].squeeze(dim=0)
-
-        if self.split == 'train_retrieval':
-            cap_id = data["caption_id"]
-            return caption, cap_id  # Only retruning captions and cap_ids
-        else:
-            return caption
 
 
 class DOCCITextDataset(Dataset):
@@ -915,32 +1059,6 @@ class Urban1kImageDataset(Dataset):
         return image, img_id
 
 
-class CC3MImageDataset(Dataset):
-    '''
-    Only loading images and img_ids. Used in Text-conditioned setting. Only in validation
-    '''
-
-    def __init__(self, root_dir, data_list=None, transform=None):
-        self.root_dir = root_dir
-        self.transform = transform
-        #create data list
-        logging.info(f"reusing pre-tokenized datalist that we get from CC3MTextDataset, extracting...")
-        self.img_list = extract_unique_img_list_from_data_list(data_list=data_list)
-        logging.info(f"finish extracting all unique images with img_ids from the whole data_list")
-
-    def __len__(self):
-        return len(self.img_list)
-
-    def __getitem__(self, idx):
-        data = self.img_list[idx]
-        img_id = data["image_id"]
-        img_path = data["image"]
-        image = Image.open(img_path).convert('RGB')
-        if self.transform:
-            image = self.transform(image)
-        return image, img_id
-
-
 class DOCCIImageDataset(Dataset):
     '''
     Only loading images and img_ids. Used in Text-conditioned setting. Only in validation
@@ -1109,15 +1227,11 @@ def get_retrieval_flickr_dataset(args, preprocess_fn, tokenizer=None, output_dic
 
 
 def get_finegrained_or_long_retrieval_dataset(args, preprocess_fn, tokenizer=None, output_dict=False,
-                                      dataset_name='cc3m_train'):
+                                      dataset_name='docci'):
     sampler = None
     shuffle = False
-    if dataset_name == "cc3m_train":
-        split = 'train_retrieval'
-        data_root_dir = args.cc3m_train_retrieval_dir
-        txt_dataset = CC3MTextDataset(root_dir=data_root_dir, transform=preprocess_fn, split=split, tokenizer=tokenizer,
-                                      sampling_mode=None, num_samples=None)
-    elif dataset_name == "docci":
+
+    if dataset_name == "docci":
         split = 'test'
         data_root_dir = args.docci_retrieval_dir
         txt_dataset = DOCCITextDataset(root_dir=data_root_dir, transform=preprocess_fn, split=split,
@@ -1161,9 +1275,7 @@ def get_finegrained_or_long_retrieval_dataset(args, preprocess_fn, tokenizer=Non
     img2txt_dict, txt2img_dict = txt_dataset.img2txt_dict, txt_dataset.txt2img_dict
     num_txt_samples = len(txt_dataset)
 
-    if dataset_name == "cc3m_train":
-        img_dataset = CC3MImageDataset(root_dir=data_root_dir, data_list=txt_dataset.data_list, transform=preprocess_fn)
-    elif dataset_name == "docci":
+    if dataset_name == "docci":
         img_dataset = DOCCIImageDataset(root_dir=data_root_dir, data_list=txt_dataset.data_list,
                                         transform=preprocess_fn)
     elif dataset_name == "urban-1k":

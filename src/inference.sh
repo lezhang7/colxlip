@@ -1,4 +1,4 @@
-torchrun --nproc_per_node 1 -m inference \
+torchrun --nproc_per_node 1 -m main \
     --model ViT-B-16-FLAIR \
     --huggingface-repo-name xiaorui638/flair \
     --huggingface-model-name flair-cc3m-recap.pt \
