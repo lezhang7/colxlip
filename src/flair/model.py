@@ -554,7 +554,6 @@ class FLAIR(nn.Module):
             "image_features": global_image_token,
             "image_tokens": local_image_tokens,
             "text_features": global_text_token,
-            "text_tokens": local_text_tokens,
             "logit_scale": self.logit_scale.exp(),
             "visual_proj": self.visual_proj
         }

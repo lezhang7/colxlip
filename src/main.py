@@ -221,8 +221,9 @@ def main(args):
     model_kwargs = {}
 
     # based on huggingface model name, download the pre-trained weights, the downloaded path is passed as the 'pretrained' arguments
-    huggingface_model_name, huggingface_repo_name = args.huggingface_model_name, args.huggingface_repo_name
-    args.pretrained = download_weights_from_hf(model_repo=huggingface_repo_name, filename=huggingface_model_name)
+    if args.huggingface_model_name != '':
+        huggingface_model_name, huggingface_repo_name = args.huggingface_model_name, args.huggingface_repo_name
+        args.pretrained = download_weights_from_hf(model_repo=huggingface_repo_name, filename=huggingface_model_name)
 
     model, preprocess_train, preprocess_val = create_model_and_transforms(
         args.model,

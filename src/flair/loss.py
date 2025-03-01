@@ -294,8 +294,7 @@ class FlairLoss(nn.Module):
     def forward(self, image_features, text_features, logit_scale, logit_bias, image_tokens=None,
                 visual_proj=None, output_dict=False):
         '''
-        expected shape: text_features: (B*K, D), text_tokens: (B*K, L, D), image_embeddings: (B, L, D)
-        but we don't need text tokens in text conditioned
+        expected shape: text_features: (B*K, D), image_embeddings: (B, L, D)
         '''
         if self.added_mps_loss:
             g_text_features = text_features  # (B*K, D)

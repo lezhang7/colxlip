@@ -475,7 +475,7 @@ def parse_args(args):
         help="Path to imagenet v2 for conducting zero shot evaluation.",
     )
     parser.add_argument(
-        "--logs",
+        "--logs-dir",
         type=str,
         default="./logs/",
         help="Where to store tensorboard logs. Use None to avoid storing logs.",
