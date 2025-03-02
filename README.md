@@ -1,5 +1,14 @@
-# FLAIR: VLM with Fine-grained Language-informed Image Representations [arxiv](https://arxiv.org/abs/2412.03561)
+# [CVPR 2025] FLAIR: VLM with Fine-grained Language-informed Image Representations
+[![Paper](https://img.shields.io/badge/paper-arxiv.2412.03561-B31B1B.svg)](https://arxiv.org/abs/2412.03561)
+[![Hugging Face](https://img.shields.io/badge/HuggingFace-FLAIR-FFD700?logo=huggingface&logoColor=yellow)](https://huggingface.co/xiaorui638/flair)
+
+
 **Authors:** Rui Xiao, Sanghwan Kim, Mariana-Iuliana Georgescu, Zeynep Akata, Stephan Alaniz
+
+## News
+- **[2025-03-02]** ⭐️ Training code & scripts released.
+- **[2025-02-26]** 🎉 Our paper was accepted to **CVPR 2025**.
+- **[2025-01-20]** ⭐️ Inference code & models released.
 
 ## Abstract
 CLIP has shown impressive results in aligning images and
@@ -88,11 +97,31 @@ Enable the following flags in `src/inference.sh` for different retrieval tasks:
    - `--retrieval-sharegpt4v-1k`: Activate the ShareGPT4V-1K retrieval task.
    - `--retrieval-sharegpt4v-10k`: Activate the ShareGPT4V-10K retrieval task.
 
+## Training FLAIR
+For results displayed in the main paper, FLAIR used [DreamLIP](https://github.com/ant-research/DreamLIP)'s recaptioned [CC3M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions), [CC12M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions), [YFCC15M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions) and combined(Merged-30M). To verify that FLAIR is fit for various data distributions, FLAIR is also trained on the original [CC3M](https://huggingface.co/datasets/pixparse/cc3m-wds) and [PixelProse](https://huggingface.co/datasets/tomg-group-umd/pixelprose) for the appendix of the paper. Notably, FLAIR requires all pre-training dataset to be processed into the [webdataset](https://github.com/webdataset/webdataset) format, to achieve higher I/O efficiency for large-scale training. In the pre-training dataset preparation step, we will take [CC3M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions) as an example to demonstrate how to prepare the pretraining data. The preparation for other datasets should be similar.
+
+### Prepare Pre-training Data
+1. Download DreamLIP's annotations for CC3M-recap:
+`wget https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions/resolve/main/cc3m_3long_3short_1raw_captions_url.csv`
+2. Scrape the images based on the url links using [img2dataset](https://github.com/rom1504/img2dataset).
+
+### Single-node training script
+Users can find the example single-node training script `src/train_example.sh` in thie repo to test if the training can run. Important flags:
+   - `--train-data`: Root dir of where the training data(shards) is stored.
+   - `--train-num-samples`: In the example file we set it to `2823019` because that's the total number of image-text pairs we get. This should be adjustable based on your data.
+
+### Multi-node training script (Slurm)
+In practice, FLAIR is trained with 8 NVIDIA A100s 40GB (on CC3M) or 32 NVIDIA A100s 40GB (on all larger datasets), where we finished all experiments using Slurm. In `src/`, we provide example slurm training scripts for each of the datasets, they are:`train_cc3m_slurm.sh, train_cc12m_slurm.sh, train_yfcc15m_slurm.sh, train_merged_30m_slurm.sh`. These training scripts contain all the necessary hyperparams you need to reproduce the training. However, you might need to add modifications to be able to run on your cluster. Please specify `--train-data` to be the directory storing the dataset shards and `--train-num-samples` to be the actual valid samples of that dataset. When training on the Merged-30M dataset, note that the `--train-data` should be the combination of the dataset paths of `cc3m-recap, cc12m-recap, yfcc15m-recap` separated by `::`, such as: 
+
+`--train-data '/datasets/yfcc15m_recap/yfcc15m-train-{0000..3636}.tar::/datasets/cc12m_recap/cc12m-train-{0000..2175}.tar::/datasets/cc3m_recap/cc3m-train-{0001..0575}.tar'`
+
+
+
 ## Acknowledgements
 We thank [OpenCLIP](https://github.com/mlfoundations/open_clip) for providing the amazing code base. Meanwhile, we acknowledge [DreamLIP](https://github.com/zyf0619sjtu/DreamLIP) and [PixelProse](https://huggingface.co/datasets/tomg-group-umd/pixelprose) for providing us with various pre-training datasets with captions from MLLMs. We are also greateful for [LoTLIP](https://github.com/wuw2019/LoTLIP) for providing the the detailed scheme for long image-text retrieval task.
 
 ## Citations
-If you find our work useful, please cite:
+If you find our work useful, please star this repo and cite:
 
 ```bibtex
 @article{xiao2024flair,
