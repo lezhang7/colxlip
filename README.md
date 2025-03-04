@@ -3,7 +3,7 @@
 [![Hugging Face](https://img.shields.io/badge/HuggingFace-FLAIR-FFD700?logo=huggingface&logoColor=yellow)](https://huggingface.co/xiaorui638/flair)
 
 
-**Authors:** Rui Xiao, Sanghwan Kim, Mariana-Iuliana Georgescu, Zeynep Akata, Stephan Alaniz
+**Authors:** [Rui Xiao](https://www.eml-munich.de/people/rui-xiao), [Sanghwan Kim](https://kim-sanghwan.github.io/), [Mariana-Iuliana Georgescu](https://lilygeorgescu.github.io/), [Zeynep Akata](https://www.eml-munich.de/people/zeynep-akata), [Stephan Alaniz](https://www.eml-munich.de/people/stephan-alaniz)
 
 ## News
 - **[2025-03-02]** ⭐️ Training code & scripts released.
@@ -25,14 +25,17 @@ language models’ ability to retrieve partial image content. Furthermore, our e
 
 ## Pre-trained Models
 
-We released the pre-trained FLAIR models on [Huggingface](https://huggingface.co/xiaorui638/flair). The pre-trained models and their corresponding datasets are listed below:
+We released the pre-trained FLAIR models on [Huggingface](https://huggingface.co/xiaorui638/flair). The pre-trained models, their corresponding pre-trained datasets, and R@1 retrieval results on COCO and Flickr are listed below. For the full results please see the [paper](https://arxiv.org/pdf/2412.03561). Generally, FLAIR shares a similar architecture as the `ViT-B-16` model in [OpenCLIP](https://github.com/mlfoundations/open_clip), therefore also having similar number of parameters (150M vs 149M), the extra 1M parameters come from the text-conditioned attention pooling layer in FLAIR.
 
-| **Checkpoints**                                                                                            | **Pre-trained Datasets** |
-|------------------------------------------------------------------------------------------------------------|--------------------------|
-| [flair-cc3m-recap](https://huggingface.co/xiaorui638/flair/resolve/main/flair-cc3m-recap.pt?download=true) | CC3M-recap               |
-| [flair-cc12m-recap](https://huggingface.co/xiaorui638/flair/resolve/main/flair-cc12m-recap.pt?download=true) | CC12M-recap              |
-| [flair-yfcc15m-recap](https://huggingface.co/xiaorui638/flair/resolve/main/flair-yfcc15m-recap.pt?download=true) | YFCC15M-recap            |
-| [flair-merged30m](https://huggingface.co/xiaorui638/flair/resolve/main/flair-merged30m.pt?download=true)   | Merged30M                |
+| **Checkpoints**                                                                                            | **Pre-trained Datasets** | **COCO T2I** | **COCO I2T** | **Flickr T2I** | **Flickr I2T** |
+|------------------------------------------------------------------------------------------------------------|--------------------------|--------------|--------------|----------------|----------------|
+| [flair-cc3m-recap](https://huggingface.co/xiaorui638/flair/resolve/main/flair-cc3m-recap.pt?download=true) | CC3M-recap               | 37.7         | 51.6         | 65.7           | 78.7           |
+| [flair-cc12m-recap](https://huggingface.co/xiaorui638/flair/resolve/main/flair-cc12m-recap.pt?download=true) | CC12M-recap              | 47.8         | 64.1         | 75.4           | 90.8           |
+| [flair-yfcc15m-recap](https://huggingface.co/xiaorui638/flair/resolve/main/flair-yfcc15m-recap.pt?download=true) | YFCC15M-recap            | 51.2         | 67.3         | 79.2           | 93.3           |
+| [flair-merged30m](https://huggingface.co/xiaorui638/flair/resolve/main/flair-merged30m.pt?download=true)   | Merged30M                | 53.3         | 68.0         | 81.1           | 94.7           |
+
+
+You don't need to munaually download the pre-trained weights to run the inference, the pre-trained weights will be automatically downloaded by specifying the `huggingface-model-name` in `src/inference.sh`(More details in the 'Inference with FLAIR' section). However, if you would like to store the pretrained weights despite the default path, you could download them manually and set  `--pretrained path/to/pretrained_weights` flag in `/src/inference.sh` instead (as OpenCLIP originally does).
 
 ## Dependencies
 The following small tutorial helps you set up a simple python virtual environment to run our code. Since our main dependency is [OpenCLIP](https://github.com/mlfoundations/open_clip), which is still updated frequently, you could always check their repo for a detailed tutorial on creating an environment that is best suited for your system. A conda environment is also possible with the same Python and PyTorch version.
@@ -58,8 +61,18 @@ pip install -r requirements.txt
 ```
 The code is tested in Python 3.12 with PyTorch 2.5.1 with CUDA 12.4. Since [OpenCLIP](https://github.com/mlfoundations/open_clip) is quite dependency-friendly, we would assume other up-to-date versions should also work.
 
+## Usage
+A minimal usage of FLAIR is displayed in `src/minimal_example.py`, where we show that FLAIR has two ways of generating logits:
+1. `model.get_logits()`: First query the local image tokens with the global text token using attention pooling, then compute the logits. This is the primary way of FLAIR getting the logits
+2. `model.get_logits_as_clip()`: Without using attention pooling, directly compute the similarity between global-level image and text features.
 
-## Dataset Preparation
+Run the example by:
+```bash
+source flair_env/bin/activate
+python3 src/minimal_example.py
+```
+
+## Inference Datasets Preparation
 Check [EVAL_DATASETS.md](datasets/EVAL_DATASETS.md) to prepare all the inference datasets. For clarity, we provide an example datasets folder with annotation files in `datasets/`. However, all datasets don't have to be stored in the same directory, you could specify them freely by changing the arguments in `src/inference.sh`.
 
 ## Inference with FLAIR
@@ -108,13 +121,26 @@ For results displayed in the main paper, FLAIR used [DreamLIP](https://github.co
 ### Single-node training script
 Users can find the example single-node training script `src/train_example.sh` in thie repo to test if the training can run. Important flags:
    - `--train-data`: Root dir of where the training data(shards) is stored.
-   - `--train-num-samples`: In the example file we set it to `2823019` because that's the total number of image-text pairs we get. This should be adjustable based on your data.
+   - `--train-num-samples`: In the example file we set it to `2823019` because that's the total number of image-text pairs we get in CC3M-recap. This should be adjustable based on your data.
+
+The single-node training script `src/train_example.sh` has been tested to run without problems. We always recommend you to run your job on single node first before starting the multi-node training by:
+```bash
+source flair_env/bin/activate
+bash src/train_example.sh
+```
 
 ### Multi-node training script (Slurm)
-In practice, FLAIR is trained with 8 NVIDIA A100s 40GB (on CC3M) or 32 NVIDIA A100s 40GB (on all larger datasets), where we finished all experiments using Slurm. In `src/`, we provide example slurm training scripts for each of the datasets, they are:`train_cc3m_slurm.sh, train_cc12m_slurm.sh, train_yfcc15m_slurm.sh, train_merged_30m_slurm.sh`. These training scripts contain all the necessary hyperparams you need to reproduce the training. However, you might need to add modifications to be able to run on your cluster. Please specify `--train-data` to be the directory storing the dataset shards and `--train-num-samples` to be the actual valid samples of that dataset. When training on the Merged-30M dataset, note that the `--train-data` should be the combination of the dataset paths of `cc3m-recap, cc12m-recap, yfcc15m-recap` separated by `::`, such as: 
+In practice, FLAIR is trained with 8 NVIDIA A100s 40GB (on CC3M) or 32 NVIDIA A100s 40GB (on all larger datasets), where we finished all experiments using Slurm. In `src/`, we provide example slurm training scripts for each of the datasets, they are:`train_cc3m_slurm.sh, train_cc12m_slurm.sh, train_yfcc15m_slurm.sh, train_merged_30m_slurm.sh`. 
+
+These training scripts contain all the necessary hyperparams you need to reproduce the training. However, you might need to add modifications to be able to run on your cluster. Please specify `--train-data` to be the directory storing the dataset shards and `--train-num-samples` to be the actual valid samples of that dataset. When training on the Merged-30M dataset, note that the `--train-data` should be the combination of the dataset paths of `cc3m-recap, cc12m-recap, yfcc15m-recap` separated by `::`, such as: 
 
 `--train-data '/datasets/yfcc15m_recap/yfcc15m-train-{0000..3636}.tar::/datasets/cc12m_recap/cc12m-train-{0000..2175}.tar::/datasets/cc3m_recap/cc3m-train-{0001..0575}.tar'`
 
+After configuring the Slurm scripts correctly, you could run the experiment by (taking CC3M-recap as an example):
+```bash
+source flair_env/bin/activate
+sbatch src/train_cc3m_slurm.sh
+```
 
 
 ## Acknowledgements

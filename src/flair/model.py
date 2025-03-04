@@ -540,6 +540,49 @@ class FLAIR(nn.Module):
 
         return global_text_token, local_text_tokens
 
+    def get_logits(self, image, text):
+        """
+        FLAIR's way ot get the logits. Only used as a minimal example to get the logits, not used in training or inference at this stage
+        """
+        global_image_token, local_image_tokens = self.encode_image(image)
+        global_text_token, _ = self.encode_text(text)
+        global_text_token = self.text_post(global_text_token) # (B*K, D)
+        global_image_token, local_image_tokens = self.image_post(global_image_token), self.image_post(
+            local_image_tokens) # (B, D), (B, L, D)
+        batch_size = global_image_token.shape[0]
+
+        # Broadcast the global text token to (B, B*K, D), this is too costly in large-scale training, so we downsample them to (B, B+K-1, D) in training
+        global_text_token = global_text_token.unsqueeze(0).expand(batch_size, -1, -1)
+
+        local_image_features = self.visual_proj(global_text_token, local_image_tokens, local_image_tokens) # (B, B*K, D)
+
+        text_features, image_features = F.normalize(global_text_token, dim=-1), F.normalize(local_image_features, dim=-1)
+
+        image_logits = self.logit_scale.exp() * torch.einsum('bij,bij->bi', image_features, text_features) # (B, B*K)
+        image_logits += self.logit_bias
+
+        text_logits = image_logits.T
+
+        return image_logits, text_logits
+
+    def get_logits_as_clip(self, image, text):
+        """
+        FLAIR could also generate the global-to-global logits as the original CLIP does
+        """
+        global_image_token, _ = self.encode_image(image)
+        global_text_token, _ = self.encode_text(text)
+
+
+        global_image_token = self.image_post(global_image_token)  # (B, D)
+        global_text_token = self.text_post(global_text_token)  # (B*K, D)
+
+        image_features, text_features = F.normalize(global_image_token, dim=-1), F.normalize(global_text_token, dim=-1)
+
+        image_logits = self.logit_scale.exp() * image_features @ text_features.t()
+        text_logits = image_logits.T
+
+        return image_logits, text_logits
+
     def forward(
             self,
             image: Optional[torch.Tensor] = None,

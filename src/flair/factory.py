@@ -13,6 +13,7 @@ from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
+from huggingface_hub import hf_hub_download
 
 import torch
 
@@ -33,6 +34,14 @@ from .loss import FlairLoss
 HF_HUB_PREFIX = 'hf-hub:'
 _MODEL_CONFIG_PATHS = [Path(__file__).parent / f"model_configs/"]
 _MODEL_CONFIGS = {}  # directory (model_name: config) of model architecture configs
+
+def download_weights_from_hf(model_repo, filename):
+    # Define the custom cache directory relative to the current script
+    cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pretrained")
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir, exist_ok=True)
+    local_path = hf_hub_download(repo_id=model_repo, filename=filename, cache_dir=cache_dir)
+    return local_path
 
 def _natural_key(string_):
     return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_.lower())]
