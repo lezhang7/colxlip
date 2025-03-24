@@ -53,7 +53,7 @@ def parse_args(args):
         type=str,
         default='',
         help=(
-            "root directory to your dataset, especially the COCO dataset."
+            "Root directory to your dataset, especially the COCO dataset."
         )
     )
     parser.add_argument(
@@ -61,7 +61,7 @@ def parse_args(args):
         type=str,
         default='',
         help=(
-            "root directory to the train retrieval dataset subsampled from cc3m"
+            "Root directory to the train retrieval dataset subsampled from cc3m."
         )
     )
     parser.add_argument(
@@ -69,7 +69,7 @@ def parse_args(args):
         type=str,
         default='',
         help=(
-            "root directory to the share4v dataset"
+            "Root directory to the share4v dataset."
         )
     )
     parser.add_argument(
@@ -77,7 +77,7 @@ def parse_args(args):
         type=str,
         default='',
         help=(
-            "root directory to the train dci daatset"
+            "Root directory to the train dci daatset."
         )
     )
     parser.add_argument(
@@ -85,7 +85,7 @@ def parse_args(args):
         type=str,
         default='',
         help=(
-            "root directory to the image in words dataset"
+            "Root directory to the image in words dataset."
         )
     )
     parser.add_argument(
@@ -93,7 +93,7 @@ def parse_args(args):
         type=str,
         default='',
         help=(
-            "root directory to fine-grained docci retrieval"
+            "Root directory to fine-grained docci retrieval."
         )
     )
     parser.add_argument(
@@ -101,7 +101,7 @@ def parse_args(args):
         type=str,
         default='',
         help=(
-            "root directory to fine-grained urban-1k retrieval"
+            "Root directory to fine-grained urban-1k retrieval."
         )
     )
     parser.add_argument(
@@ -109,7 +109,7 @@ def parse_args(args):
         type=str,
         default=None,
         help=(
-            "datasets that you want to do retrieval"
+            "Datasets that you want to do retrieval."
         )
     )
     parser.add_argument(
@@ -117,7 +117,7 @@ def parse_args(args):
         type=str,
         default='',
         help=(
-            "root directory to the COCO dataset"
+            "Root directory to the COCO dataset."
         )
     )
     parser.add_argument(
@@ -125,20 +125,20 @@ def parse_args(args):
         type=str,
         default='',
         help=(
-            "root directory to the flickr datasets (but we simply use the root of the whole dataset)"
+            "Root directory to the flickr datasets (but we simply use the root of the whole dataset)."
         )
     )
     parser.add_argument(
         "--val-data",
         type=str,
         default=None,
-        help="Path to file(s) with validation data",
+        help="Path to file(s) with validation data.",
     )
     parser.add_argument(
         "--dict-root-dir",
         type=str,
         default=None,
-        help="Path to the preprocessed dictionaries to filter the dataset",
+        help="Path to the preprocessed dictionaries to filter the dataset.",
     )
     parser.add_argument(
         "--train-num-samples",
@@ -216,13 +216,13 @@ def parse_args(args):
         "--fixed-merged-num",
         default=False,
         action="store_true",
-        help="If true, then we fix the merging number in variable merge"
+        help="If true, then we fix the merging number in variable merge."
     )
     parser.add_argument(
         "--all-subsequent-merged",
         default=False,
         action="store_true",
-        help="If enabled, then we only merge subsequent captions"
+        help="If enabled, then we only merge subsequent captions."
     )
     parser.add_argument(
         "--use-flair-loss",
@@ -234,13 +234,13 @@ def parse_args(args):
         "--add-mps-loss",
         default=False,
         action="store_true",
-        help="Whether to add the multi-positive loss or not"
+        help="Whether to add the multi-positive loss or not."
     )
     parser.add_argument(
         "--directly-use-attn-weights",
         default=False,
         action="store_true",
-        help="Directly use attn weights for segmentation or not"
+        help="Directly use attn weights for segmentation or not."
     )
     parser.add_argument(
         "--sampled-textcon-siglip-loss",
@@ -270,13 +270,13 @@ def parse_args(args):
         "--pixelprose",
         default=False,
         action="store_true",
-        help="Set to true to remind te webdataset to adapt to the pixelprose format"
+        help="Set to true to remind te webdataset to adapt to the pixelprose format."
     )
     parser.add_argument(
         "--datacomp",
         default=False,
         action="store_true",
-        help="Set to true to remind te webdataset to adapt to the datacomp format"
+        help="Set to true to remind te webdataset to adapt to the datacomp format."
     )
     parser.add_argument(
         "--add-global-loss",
@@ -288,25 +288,25 @@ def parse_args(args):
         "--add-intra-sample-loss",
         default=False,
         action="store_true",
-        help="Whether to add the intra sample loss or not"
+        help="Whether to add the intra sample loss or not."
     )
     parser.add_argument(
         "--cross-con",
         default=False,
         action="store_true",
-        help="Using Cross conditioned model and loss or not"
+        help="Using Cross conditioned model and loss or not."
     )
     parser.add_argument(
         "--text-con-with-down-proj",
         default=False,
         action="store_true",
-        help="Using the new Text-conditioned model with down-proj or not"
+        help="Using the new Text-conditioned model with down-proj or not."
     )
     parser.add_argument(
         "--use-csa",
         default=False,
         action="store_true",
-        help='For segmentation evaluation use correlative self-attention by SCLIP'
+        help='For segmentation evaluation use correlative self-attention by SCLIP.'
     )
     parser.add_argument(
         "--seg-model",
@@ -319,28 +319,28 @@ def parse_args(args):
         "--show-dir",
         type=str,
         default="",
-        help=''' directory for saving the visualizations for segmentation'''
+        help=''' Directory for saving the visualizations for segmentation.'''
     )
     parser.add_argument(
-        "--max-merged-num", type=int, default=3, help="maximum number of merging."
+        "--max-merged-num", type=int, default=3, help="Maximum number of merging."
     )
     parser.add_argument(
         "--cross-con-with-post-process",
         default=False,
         action="store_true",
-        help="Using Cross conditioned model with post processing and loss or not"
+        help="Using Cross conditioned model with post processing and loss or not."
     )
     parser.add_argument(
         "--add-global-loss-in-sampled-cross-con",
         default=False,
         action="store_true",
-        help="Using Cross conditioned model with post processing and loss or not"
+        help="Using Cross conditioned model with post processing and loss or not."
     )
     parser.add_argument(
         "--cross-con-with-down-proj",
         default=False,
         action="store_true",
-        help="Whether to use the corss conditioned model with down-projected embed dim or not"
+        help="Whether to use the corss conditioned model with down-projected embed dim or not."
     )
     parser.add_argument(
         "--txt-con-attn-pool",
@@ -352,7 +352,7 @@ def parse_args(args):
         "--evaluate-as-original-clip",
         default=False,
         action="store_true",
-        help="Though text-conditioned, still evaluate in the original CLIP way"
+        help="Though text-conditioned, still evaluate in the original CLIP way."
     )
     parser.add_argument(
         "--evaluate-as-text-conditioned",
@@ -364,85 +364,85 @@ def parse_args(args):
         "--retrieval-coco",
         default=False,
         action="store_true",
-        help="If true, then we enable the coco retrieval task")
+        help="If true, then we enable the coco retrieval task.")
 
     parser.add_argument(
         "--retrieval-dci",
         default=False,
         action="store_true",
-        help="If true, then we enable the dci retrieval task")
+        help="If true, then we enable the dci retrieval task.")
 
     parser.add_argument(
         "--retrieval-iiw",
         default=False,
         action="store_true",
-        help="If true, then we enable the iiw retrieval task")
+        help="If true, then we enable the iiw retrieval task.")
 
     parser.add_argument(
         "--use-finegrained-iiw",
         default=True,
         action="store_true",
-        help="If set to true, under the condition that we enable iiw, we further use the fine-grained iiw mode")
+        help="If set to true, under the condition that we enable iiw, we further use the fine-grained iiw mode.")
 
     parser.add_argument(
         "--retrieval-sharegpt4v-1k",
         default=False,
         action="store_true",
-        help="If true, then we enable the sharegpt4v retrieval task with 1k data size")
+        help="If true, then we enable the sharegpt4v retrieval task with 1k data size.")
 
     parser.add_argument(
         "--retrieval-sharegpt4v-10k",
         default=False,
         action="store_true",
-        help="If true, then we enable the sharegpt4v retrieval task with 10k data size")
+        help="If true, then we enable the sharegpt4v retrieval task with 10k data size.")
 
     parser.add_argument(
         "--retrieval-flickr",
         default=False,
         action="store_true",
-        help="If true, then we enable the flickr retrieval task")
+        help="If true, then we enable the flickr retrieval task.")
     parser.add_argument(
         "--add-global-loss-cross-con",
         default=False,
         action="store_true",
-        help="If true, then we add global loss to cross-condition setting")
+        help="If true, then we add global loss to cross-condition setting.")
     parser.add_argument(
         "--add-global-loss-cross-con-mean",
         default=False,
         action="store_true",
-        help="If true, then we add global loss to cross-condition mean setting")
+        help="If true, then we add global loss to cross-condition mean setting.")
     parser.add_argument(
         "--add-pooled-global-loss-cross-con",
         default=False,
         action="store_true",
-        help="If true, then we add pooled global loss to cross-condition setting")
+        help="If true, then we add pooled global loss to cross-condition setting.")
     parser.add_argument(
         "--txt-self-attn",
         default=False,
         action="store_true",
-        help="If true, then we add pooled attn pooling also to generate the text embeddings")
+        help="If true, then we add pooled attn pooling also to generate the text embeddings.")
 
     parser.add_argument(
         "--retrieval-urban-1k",
         default=False,
         action="store_true",
-        help="If true, then we enable the urban-1k retrieval task")
+        help="If true, then we enable the urban-1k retrieval task.")
     parser.add_argument(
         "--retrieval-data-cc3m-train",
         default=False,
         action="store_true",
-        help="If true, then we enable the cc3m retrieval task")
+        help="If true, then we enable the cc3m retrieval task.")
     parser.add_argument(
         "--retrieval-docci",
         default=False,
         action="store_true",
-        help="If true, then we enable the DOCCI retrieval task")
+        help="If true, then we enable the DOCCI retrieval task.")
 
     parser.add_argument(
         "--use-original-openclip-csv-dataset",
         default=False,
         action="store_true",
-        help="Whether to use the original openclip csv dataset or not, if false, then use new csv dataset"
+        help="Whether to use the original openclip csv dataset or not, if false, then use new csv dataset."
     )
     parser.add_argument(
         "--csv-separator",
@@ -485,44 +485,44 @@ def parse_args(args):
         type=str,
         default='val',
         choices=['val', 'testing'],
-        help="Which dataset to be used for inference, default choices are val or test",
+        help="Which dataset to be used for inference, default choices are val or test.",
     )
     parser.add_argument(
         "--huggingface-model-name",
         type=str,
         default="",
-        help="Name of the huggingface model"
+        help="Name of the huggingface model."
     )
     parser.add_argument(
         "--huggingface-repo-name",
         type=str,
         default="",
-        help="Name of the huggingface repo"
+        help="Name of the huggingface repo."
     )
     parser.add_argument(
         "--ablation-negative-type",
         type=str,
         default=None,
         choices=['ijj', 'iji', 'ijk', 'iij', 'intra'],
-        help="denote the ablation negative type for the abation study",
+        help="Denote the ablation negative type for the abation study.",
     )
     parser.add_argument(
         "--log-local",
         action="store_true",
         default=False,
-        help="log files on local master, otherwise global master only.",
+        help="Log files on local master, otherwise global master only.",
     )
     parser.add_argument(
         "--random-select-text-tokens",
         action="store_true",
         default=False,
-        help="to randomly select the text tokens for the img-con text tokens pooling or not",
+        help="To randomly select the text tokens for the img-con text tokens pooling or not.",
     )
     parser.add_argument(
         "--use-siglip",
         action="store_true",
         default=False,
-        help="whether to use the siglip loss for text conditioned model or not.",
+        help="Whether to use the siglip loss for text conditioned model or not.",
     )
     parser.add_argument(
         "--name",
@@ -589,16 +589,16 @@ def parse_args(args):
         "--negative-sampling-in-forward",
         action="store_true",
         default=False,
-        help="Doing negative sampling in SampledCrossConSigLipLoss in the forward function",
+        help="Doing negative sampling in SampledCrossConSigLipLoss in the forward function.",
     )
     parser.add_argument(
         "--negative-sampling-in-gpu",
         action="store_true",
         default=False,
-        help="Doing negative sampling in SampledCrossConSigLipLoss inside the GPU",
+        help="Doing negative sampling in SampledCrossConSigLipLoss inside the GPU.",
     )
     parser.add_argument(
-        "--merged-captions-num", type=int, default=1, help="Number of merged captions"
+        "--merged-captions-num", type=int, default=1, help="Number of merged captions."
     )
     parser.add_argument(
         "--zeroshot-frequency", type=int, default=2, help="How often to run zero shot."
@@ -610,19 +610,19 @@ def parse_args(args):
         "--resume",
         default=None,
         type=str,
-        help="path to latest checkpoint (default: none)",
+        help="Path to latest checkpoint (default: none).",
     )
     parser.add_argument(
         "--coco-random-subset",
         default=None,
         type=int,
-        help="ransomly subset how many k number of samples in COCO dataset."
+        help="Randomly subset how many k number of samples in COCO dataset."
     )
     parser.add_argument(
         "--coco-sliding-window",
         default=None,
         type=int,
-        help="number to specify the kth window to be used."
+        help="Number to specify the kth window to be used."
     )
 
     parser.add_argument(
@@ -641,7 +641,7 @@ def parse_args(args):
         "--negative-type",
         choices=["ijj", "iji"],
         default="ijj",
-        help="Main type of negatives in text conditioned pooling"
+        help="Main type of negatives in text conditioned pooling."
     )
     parser.add_argument(
         "--model",
@@ -673,19 +673,19 @@ def parse_args(args):
         "--mixed-sampling-cross-con",
         default=False,
         action='store_true',
-        help="Whether to use the mixed sampling mode for cross-con or not",
+        help="Whether to use the mixed sampling mode for cross-con or not.",
     )
     parser.add_argument(
         "--use-dreamlip-loss",
         default=False,
         action='store_true',
-        help="If true, then we use dreamlip loss",
+        help="If true, then we use dreamlip loss.",
     )
     parser.add_argument(
         "--dreamlip-model",
         default=False,
         action='store_true',
-        help="If true, then we use dreamlip model",
+        help="If true, then we use dreamlip model.",
     )
     parser.add_argument(
         "--normal-clip-with-multi-cap",
@@ -719,19 +719,19 @@ def parse_args(args):
     )
     parser.add_argument(
         '--image-mean', type=float, nargs='+', default=None, metavar='MEAN',
-        help='Override default image mean value of dataset')
+        help='Override default image mean value of dataset.')
     parser.add_argument(
         '--image-std', type=float, nargs='+', default=None, metavar='STD',
-        help='Override default image std deviation of of dataset')
+        help='Override default image std deviation of of dataset.')
     parser.add_argument(
         '--image-interpolation',
         default=None, type=str, choices=['bicubic', 'bilinear', 'random'],
-        help="Override default image resize interpolation"
+        help="Override default image resize interpolation."
     )
     parser.add_argument(
         '--image-resize-mode',
         default=None, type=str, choices=['shortest', 'longest', 'squash'],
-        help="Override default image resize (& crop) mode during inference"
+        help="Override default image resize (& crop) mode during inference."
     )
     parser.add_argument('--aug-cfg', nargs='*', default={}, action=ParseKwargs)
     parser.add_argument(
@@ -744,17 +744,17 @@ def parse_args(args):
         "--local-loss",
         default=False,
         action="store_true",
-        help="calculate loss w/ local features @ global (instead of realizing full global @ global matrix)"
+        help="Calculate loss w/ local features @ global (instead of realizing full global @ global matrix)."
     )
     parser.add_argument(
         "--gather-with-grad",
         default=False,
         action="store_true",
-        help="enable full distributed gradient for feature gather"
+        help="Enable full distributed gradient for feature gather."
     )
     parser.add_argument(
         '--force-image-size', type=int, nargs='+', default=None,
-        help='Override default image size'
+        help='Override default image size.'
     )
     parser.add_argument(
         "--force-quick-gelu",
@@ -766,7 +766,7 @@ def parse_args(args):
         "--force-patch-dropout",
         default=None,
         type=float,
-        help="Override the patch dropout during training, for fine tuning with no dropout near the end as in the paper",
+        help="Override the patch dropout during training, for fine tuning with no dropout near the end as in the paper.",
     )
     parser.add_argument(
         "--force-custom-text",
@@ -778,7 +778,7 @@ def parse_args(args):
         "--torchscript",
         default=False,
         action='store_true',
-        help="torch.jit.script the model, also uses jit version of OpenAI models if pretrained=='openai'",
+        help="torch.jit.script the model, also uses jit version of OpenAI models if pretrained=='openai'.",
     )
     parser.add_argument(
         "--torchcompile",
@@ -790,7 +790,7 @@ def parse_args(args):
         "--trace",
         default=False,
         action='store_true',
-        help="torch.jit.trace the model for inference / eval only",
+        help="torch.jit.trace the model for inference / eval only.",
     )
     parser.add_argument(
         "--accum-freq", type=int, default=1, help="Update the model every --acum-freq steps."
@@ -815,7 +815,7 @@ def parse_args(args):
         "--wandb-notes",
         default='',
         type=str,
-        help="Notes if logging with wandb"
+        help="Notes if logging with wandb."
     )
     parser.add_argument(
         "--wandb-project-name",
@@ -868,13 +868,13 @@ def parse_args(args):
         "--add-attn-pooling",
         default=False,
         action="store_true",
-        help="To add attn-pooling in the end of vision encoder or not, note that this will set the original pooling to Identity"
+        help="To add attn-pooling in the end of vision encoder or not, note that this will set the original pooling to Identity."
     )
     parser.add_argument(
         "--text-con-attn-pool",
         default=False,
         action="store_true",
-        help="Indicating whether the model is using text conditioning or not. Must be specified if using text-conditioned models"
+        help="Indicating whether the model is using text conditioning or not. Must be specified if using text-conditioned models."
     )
     parser.add_argument(
         "--seed", type=int, default=0, help="Default random seed."
@@ -922,7 +922,7 @@ def parse_args(args):
         "--remote-sync",
         type=str,
         default=None,
-        help="Optinoally sync with a remote path specified by this arg",
+        help="Optinoally sync with a remote path specified by this arg.",
     )
     parser.add_argument(
         "--remote-sync-frequency",

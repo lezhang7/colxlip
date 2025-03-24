@@ -202,7 +202,7 @@ def get_intra_logits(image_features, text_features, logit_scale, logit_bias=None
     Target: (B, K, K)
     """
     logits = logit_scale * torch.einsum('bkd,bjd->bkj', image_features, text_features)
-    #logits = logit_scale * image_features @ text_features.T  
+    # logits = logit_scale * image_features @ text_features.T  
     if logit_bias is not None:
         logits += logit_bias
     return logits
@@ -302,7 +302,7 @@ class FlairLoss(nn.Module):
             g_text_features = None
         
 
-        #we don't change the shape of image tokens anywhere before the loss function
+        # We don't change the shape of image tokens anywhere before the loss function.
         batch_size = image_tokens.shape[0]
         num_captions = self.num_cap_per_img
         caption_indices = torch.arange(batch_size * num_captions).view(batch_size, num_captions).to(
@@ -441,14 +441,14 @@ def downsample_text_features(text_features, batch_size, caption_indices, num_cap
     other_image_indices = torch.arange(batch_size, device=device).unsqueeze(0).expand(batch_size, batch_size)
     other_image_indices = other_image_indices[mask].view(batch_size, batch_size - 1)
     random_offsets = torch.randint(0, num_captions, (batch_size, batch_size - 1), device=device)  # (B, B-1)
-    other_caption_indices = caption_indices[other_image_indices, random_offsets]  #sampled indices (B, B-1)
+    other_caption_indices = caption_indices[other_image_indices, random_offsets]  # sampled indices (B, B-1)
 
     combined_indices = torch.cat([own_caption_indices, other_caption_indices], dim=1)
     combined_indices, _ = combined_indices.sort(dim=1)
-    flat_combined_indices = combined_indices.view(-1)  #flatten to take the text_features out
+    flat_combined_indices = combined_indices.view(-1)  # flatten to take the text_features out
 
     downsampled_text_features = text_features[flat_combined_indices]
 
-    embed_dim = text_features.shape[-1]  #Reshape to (B, K + B - 1, D)
+    embed_dim = text_features.shape[-1]  # Reshape to (B, K + B - 1, D)
     downsampled_text_features = downsampled_text_features.view(batch_size, num_captions + batch_size - 1, embed_dim)
     return downsampled_text_features

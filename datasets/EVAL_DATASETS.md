@@ -49,7 +49,7 @@ $docci/
 |––  annotations/
 |–––– test_annotations.json
 ```
-Step 1. Download  [DOCCI Images](https://storage.googleapis.com/docci/data/docci_images.tar.gz), unzip them under `docci/images/`, note that we only need the 5K test images here
+Step 1. Download  [DOCCI Images](https://storage.googleapis.com/docci/data/docci_images.tar.gz), unzip them under `docci/images/`, note that we only need the 5K test images here.
 
 Step 2. Directly copy the `test_annotations.json` in this repo and put it under `docci/annotations`. This annotation file documents the mapping between all test images with all fine-grained captions.
 
@@ -65,11 +65,11 @@ $imageinwords/
 
 **Download human annotated data following [IIW](https://github.com/google/imageinwords/tree/main/datasets), including IIW-400, DCI-Test, DOCCI-Test**:
 
-Step 1: Download [DCI](https://github.com/facebookresearch/DCI) to path_to_dci_dataset
+Step 1: Download [DCI](https://github.com/facebookresearch/DCI) to path_to_dci_dataset.
 
 Step 2: Download DOCCI images and AAR images from [DOCCI](https://google.github.io/docci/#downloads) dataset. Unzip the files to path_to_docci_dataset/images and path_to_docci_dataset/images_aar, respectively.
 
-Step 3: Directly copy `finegrained_annotations.json` in this repo and put it under `imageinwords\`
+Step 3: Directly copy `finegrained_annotations.json` in this repo and put it under `imageinwords\`.
 
 
 ### <span id ='share4v'> ShareGPT4v dataset
@@ -85,11 +85,11 @@ $share4v/
 |–– ...
 ```
 
-Step 1. Download tar files from [SA-1B](https://huggingface.co/datasets/sailvideo/SA-1B) to `share4v/`
+Step 1. Download tar files from [SA-1B](https://huggingface.co/datasets/sailvideo/SA-1B) to `share4v/`.
 
-Step 2. Unzip all tar files
+Step 2. Unzip all tar files.
 
-For the annotations, we have resaved the top 10k samples from [share-captioner_coco_lcs_sam_1246k_1107.json](https://huggingface.co/datasets/Lin-Chen/ShareGPT4V/tree/main) in dataloaders/share4v/share4v_sam_10k.json
+For the annotations, we have resaved the top 10k samples from [share-captioner_coco_lcs_sam_1246k_1107.json](https://huggingface.co/datasets/Lin-Chen/ShareGPT4V/tree/main) in dataloaders/share4v/share4v_sam_10k.json.
 
 
 ### <span id ='dci'> DCI dataset
@@ -105,7 +105,7 @@ $dci/
 
 **Download data following [DCI](https://github.com/facebookresearch/DCI)**:
 
-Step 1. Download [dci.tar.gz](https://dl.fbaipublicfiles.com/densely_captioned_images/dci.tar.gz) and unzip the file in `dci/densely_captioned_images` 
+Step 1. Download [dci.tar.gz](https://dl.fbaipublicfiles.com/densely_captioned_images/dci.tar.gz) and unzip the file in `dci/densely_captioned_images`.
 
 Step 2. Download the archive sa_000138.tar and extract the images to the `dci/densely_captioned_images/photos folder`.
 
@@ -120,6 +120,6 @@ $Urban1k/
 |––  annotations/
 |–––– annotations.json
 ```
-Step 1. Download  [Urban1K](https://huggingface.co/datasets/BeichenZhang/Urban1k), unzip them, only put the images(without the caption folder)under `Urban1k/images/`, 
+Step 1. Download  [Urban1K](https://huggingface.co/datasets/BeichenZhang/Urban1k), unzip them, only put the images(without the caption folder)under `Urban1k/images/`.
 
 Step 2. Directly copy the `annotations.json` in this repo and put it under `Urban1k/annotations`. This annotation file documents the mapping between each image with its corresponding long caption.

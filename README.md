@@ -13,19 +13,14 @@
 ## Abstract
 CLIP has shown impressive results in aligning images and
 texts at scale. However, its ability to capture detailed visual features remains limited because CLIP matches images and texts at a global level. To address this issue, we propose **FLAIR**, **F**ine-grained **La**nguage-informed **I**mage
-**R**epresentations, an approach that utilizes long and detailed image descriptions to learn localized image embed
-dings. By sampling diverse sub-captions that describe fine-grained details about an image, we train our vision-
-language model to produce not only global embeddings but also text-specific image representations. Our model
-introduces text-conditioned attention pooling on top of local image tokens to produce fine-grained image representations that excel at retrieving detailed image content. We achieve state-of-the-art performance on both, existing mul-
-timodal retrieval benchmarks, as well as, our newly introduced fine-grained retrieval task which evaluates vision-
-language models’ ability to retrieve partial image content. Furthermore, our experiments demonstrate the effectiveness of FLAIR trained on 30M image-text pairs in capturing fine-grained visual information, including zero-shot semantic segmentation, outperforming models trained on billions of pairs.
+**R**epresentations, an approach that utilizes long and detailed image descriptions to learn localized image embeddings. By sampling diverse sub-captions that describe fine-grained details about an image, we train our vision-language model to produce not only global embeddings but also text-specific image representations. Our model introduces text-conditioned attention pooling on top of local image tokens to produce fine-grained image representations that excel at retrieving detailed image content. We achieve state-of-the-art performance on both, existing multimodal retrieval benchmarks, as well as, our newly introduced fine-grained retrieval task which evaluates vision-language models’ ability to retrieve partial image content. Furthermore, our experiments demonstrate the effectiveness of FLAIR trained on 30M image-text pairs in capturing fine-grained visual information, including zero-shot semantic segmentation, outperforming models trained on billions of pairs.
 
 ## Methodology
 ![](assets/methodology_github.png "A general workflow for FLAIR")
 
 ## Pre-trained Models
 
-We released the pre-trained FLAIR models on [Huggingface](https://huggingface.co/xiaorui638/flair). The pre-trained models, their corresponding pre-trained datasets, and R@1 retrieval results on COCO and Flickr are listed below. For the full results please see the [paper](https://arxiv.org/pdf/2412.03561). Generally, FLAIR shares a similar architecture as the `ViT-B-16` model in [OpenCLIP](https://github.com/mlfoundations/open_clip), therefore also having similar number of parameters (150M vs 149M), the extra 1M parameters come from the text-conditioned attention pooling layer in FLAIR.
+We released the pre-trained FLAIR models on [Huggingface](https://huggingface.co/xiaorui638/flair). The pre-trained models, their corresponding pre-trained datasets, and R@1 retrieval results on COCO and Flickr are listed below. For the full results please see the [paper](https://arxiv.org/pdf/2412.03561). Generally, FLAIR shares a similar architecture as the `ViT-B-16` model from [OpenCLIP](https://github.com/mlfoundations/open_clip), therefore also having similar number of parameters (150M vs 149M), the extra 1M parameters come from the text-conditioned attention pooling layer in FLAIR.
 
 | **Checkpoints**                                                                                            | **Pre-trained Datasets** | **COCO T2I** | **COCO I2T** | **Flickr T2I** | **Flickr I2T** |
 |------------------------------------------------------------------------------------------------------------|--------------------------|--------------|--------------|----------------|----------------|
@@ -35,7 +30,7 @@ We released the pre-trained FLAIR models on [Huggingface](https://huggingface.co
 | [flair-merged30m](https://huggingface.co/xiaorui638/flair/resolve/main/flair-merged30m.pt?download=true)   | Merged30M                | 53.3         | 68.0         | 81.1           | 94.7           |
 
 
-You don't need to munaually download the pre-trained weights to run the inference, the pre-trained weights will be automatically downloaded by specifying the `huggingface-model-name` in `src/inference.sh`(More details in the 'Inference with FLAIR' section). However, if you would like to store the pretrained weights despite the default path, you could download them manually and set  `--pretrained path/to/pretrained_weights` flag in `/src/inference.sh` instead (as OpenCLIP originally does).
+⚠️ You don't need to manually download the pre-trained weights to run the inference, the pre-trained weights will be automatically downloaded by specifying the `huggingface-model-name` in `src/inference.sh` (More details in the 'Inference with FLAIR' section). However, if you would like to store the pretrained weights despite the default path, you could download them manually and set  `--pretrained path/to/pretrained_weights` flag in `/src/inference.sh` instead (as OpenCLIP originally does).
 
 ## Dependencies
 The following small tutorial helps you set up a simple python virtual environment to run our code. Since our main dependency is [OpenCLIP](https://github.com/mlfoundations/open_clip), which is still updated frequently, you could always check their repo for a detailed tutorial on creating an environment that is best suited for your system. A conda environment is also possible with the same Python and PyTorch version.
@@ -111,7 +106,7 @@ Enable the following flags in `src/inference.sh` for different retrieval tasks:
    - `--retrieval-sharegpt4v-10k`: Activate the ShareGPT4V-10K retrieval task.
 
 ## Training FLAIR
-For results displayed in the main paper, FLAIR used [DreamLIP](https://github.com/ant-research/DreamLIP)'s recaptioned [CC3M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions), [CC12M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions), [YFCC15M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions) and combined(Merged-30M). To verify that FLAIR is fit for various data distributions, FLAIR is also trained on the original [CC3M](https://huggingface.co/datasets/pixparse/cc3m-wds) and [PixelProse](https://huggingface.co/datasets/tomg-group-umd/pixelprose) for the appendix of the paper. Notably, FLAIR requires all pre-training dataset to be processed into the [webdataset](https://github.com/webdataset/webdataset) format, to achieve higher I/O efficiency for large-scale training. In the pre-training dataset preparation step, we will take [CC3M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions) as an example to demonstrate how to prepare the pretraining data. The preparation for other datasets should be similar.
+For results displayed in the main paper, FLAIR used [DreamLIP](https://github.com/ant-research/DreamLIP)'s recaptioned [CC3M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions), [CC12M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions), [YFCC15M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions) and combined (Merged-30M). To verify that FLAIR is fit for various data distributions, FLAIR is also trained on the original [CC3M](https://huggingface.co/datasets/pixparse/cc3m-wds) and [PixelProse](https://huggingface.co/datasets/tomg-group-umd/pixelprose), results presented in the appendix of the paper. Notably, FLAIR requires all pre-training dataset to be processed into the [webdataset](https://github.com/webdataset/webdataset) format, to achieve higher I/O efficiency for large-scale training. In the pre-training dataset preparation step, we will take [CC3M-recap](https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions) as an example to demonstrate how to prepare the pretraining data. The preparation for other datasets should be similar.
 
 ### Prepare Pre-training Data
 1. Download DreamLIP's annotations for CC3M-recap:
@@ -119,8 +114,8 @@ For results displayed in the main paper, FLAIR used [DreamLIP](https://github.co
 2. Scrape the images based on the url links using [img2dataset](https://github.com/rom1504/img2dataset).
 
 ### Single-node training script
-Users can find the example single-node training script `src/train_example.sh` in thie repo to test if the training can run. Important flags:
-   - `--train-data`: Root dir of where the training data(shards) is stored.
+Users can find the single-node training script example `src/train_example.sh` in this repo, to test if the training runs. Important flags:
+   - `--train-data`: Root dir of where the training data (shards) is stored.
    - `--train-num-samples`: In the example file we set it to `2823019` because that's the total number of image-text pairs we get in CC3M-recap. This should be adjustable based on your data.
 
 The single-node training script `src/train_example.sh` has been tested to run without problems. We always recommend you to run your job on single node first before starting the multi-node training by:
@@ -130,7 +125,7 @@ bash src/train_example.sh
 ```
 
 ### Multi-node training script (Slurm)
-In practice, FLAIR is trained with 8 NVIDIA A100s 40GB (on CC3M) or 32 NVIDIA A100s 40GB (on all larger datasets), where we finished all experiments using Slurm. In `src/`, we provide example slurm training scripts for each of the datasets, they are:`train_cc3m_slurm.sh, train_cc12m_slurm.sh, train_yfcc15m_slurm.sh, train_merged_30m_slurm.sh`. 
+In practice, FLAIR is trained with 8 NVIDIA A100s 40GB (on CC3M) or 32 NVIDIA A100s 40GB (on all larger datasets), where we finished all experiments using Slurm. In `src/`, we provide example slurm training scripts for each of the datasets, they are: `train_cc3m_slurm.sh, train_cc12m_slurm.sh, train_yfcc15m_slurm.sh, train_merged_30m_slurm.sh`. 
 
 These training scripts contain all the necessary hyperparams you need to reproduce the training. However, you might need to add modifications to be able to run on your cluster. Please specify `--train-data` to be the directory storing the dataset shards and `--train-num-samples` to be the actual valid samples of that dataset. When training on the Merged-30M dataset, note that the `--train-data` should be the combination of the dataset paths of `cc3m-recap, cc12m-recap, yfcc15m-recap` separated by `::`, such as: 
 
@@ -153,7 +148,7 @@ If you find our work useful, please star this repo and cite:
 @article{xiao2024flair,
   title={FLAIR: VLM with Fine-grained Language-informed Image Representations},
   author={Xiao, Rui and Kim, Sanghwan and Georgescu, Mariana-Iuliana and Akata, Zeynep and Alaniz, Stephan},
-  journal={arXiv preprint arXiv:2412.03561},
-  year={2024}
+  journal={CVPR},
+  year={2025}
 }
 

@@ -522,7 +522,7 @@ class FLAIR(nn.Module):
         txt_dim = text.shape[-1]
         cast_dtype = self.transformer.get_cast_dtype()
 
-        text = text.view(-1, txt_dim)  #(B*K, 77)
+        text = text.view(-1, txt_dim)  # (B*K, 77)
 
         x = self.token_embedding(text).to(cast_dtype)  # [batch_size, n_ctx, d_model]
 
@@ -532,7 +532,7 @@ class FLAIR(nn.Module):
         global_text_token, local_text_tokens = text_global_pool(x, text, self.text_pool_type)  # (B*K, L, D)
         if self.text_projection is not None:
             if isinstance(self.text_projection, nn.Linear):
-                global_text_token = self.text_projection(global_text_token)  #(B*K, N) as queries
+                global_text_token = self.text_projection(global_text_token)  # (B*K, N) as queries
                 local_text_tokens = self.text_projection(local_text_tokens)
             else:
                 global_text_token = global_text_token @ self.text_projection
@@ -542,7 +542,7 @@ class FLAIR(nn.Module):
 
     def get_logits(self, image, text):
         """
-        FLAIR's way ot get the logits. Only used as a minimal example to get the logits, not used in training or inference at this stage
+        FLAIR's way to get the logits. Only used as a minimal example to get the logits, not used in training or inference at this stage.
         """
         global_image_token, local_image_tokens = self.encode_image(image)
         global_text_token, _ = self.encode_text(text)
@@ -567,7 +567,7 @@ class FLAIR(nn.Module):
 
     def get_logits_as_clip(self, image, text):
         """
-        FLAIR could also generate the global-to-global logits as the original CLIP does
+        FLAIR could also generate the global-to-global logits as the original CLIP does.
         """
         global_image_token, _ = self.encode_image(image)
         global_text_token, _ = self.encode_text(text)
