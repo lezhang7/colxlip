@@ -6,6 +6,7 @@
 **Authors:** [Rui Xiao](https://www.eml-munich.de/people/rui-xiao), [Sanghwan Kim](https://kim-sanghwan.github.io/), [Mariana-Iuliana Georgescu](https://lilygeorgescu.github.io/), [Zeynep Akata](https://www.eml-munich.de/people/zeynep-akata), [Stephan Alaniz](https://www.eml-munich.de/people/stephan-alaniz)
 
 ## News
+- **[2025-03-31]** 🍻 Check out [**COSMOS**](https://github.com/ExplainableML/cosmos), a self-distillation approach to be presented at **CVPR 2025**. 
 - **[2025-03-02]** ⭐️ Training code & scripts released.
 - **[2025-02-26]** 🎉 Our paper was accepted to **CVPR 2025**.
 - **[2025-01-20]** ⭐️ Inference code & models released.
