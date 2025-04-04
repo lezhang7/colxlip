@@ -10,7 +10,7 @@ torchrun --nnode 1 --nproc_per_node 4 -m main \
     --caption-sampling-mode diverse_sampling \
     --batch-size 128 \
     --precision amp \
-    --workers 25 \
+    --workers 48 \
     --delete-previous-checkpoint \
     --beta1 0.9 \
     --beta2 0.98 \

@@ -112,7 +112,15 @@ For results displayed in the main paper, FLAIR used [DreamLIP](https://github.co
 ### Prepare Pre-training Data
 1. Download DreamLIP's annotations for CC3M-recap:
 `wget https://huggingface.co/datasets/qidouxiong619/dreamlip_long_captions/resolve/main/cc3m_3long_3short_1raw_captions_url.csv`
-2. Scrape the images based on the url links using [img2dataset](https://github.com/rom1504/img2dataset).
+2. Convert to `.parquet` format: `python3 /preprocess/convert_to_parquet.py --input-path /path/to/csv --output-path /path/to/parquet`
+3. Scrape the images based on the url links using [img2dataset](https://github.com/rom1504/img2dataset), replace the paths accordingly:
+`bash preprocess/scraping_cc3m.sh`
+4. Now that the captions should be stored inside each shard with the `.json` format. We then pre-split all the captions and re-write the shards:
+```python
+python3 preproecss/presplit_captions.py --shards-dir /path/to/cc3m --num-processes 24 
+```
+**Remarks**: FLAIR requires the captions stored in `.json` format inside each shard, so that the captions can be handled by `sample_dict()` function in `src/flair/data.py`. Instead of pre-splitting captions in step 4, an alternative approach would be splitting the captions inside the `sample_dict()` function (see this [issue](https://github.com/ExplainableML/flair/issues/6)). 
+To minimize loss of images, you could also download existing HuggingFace datasets to avoid the scraping in step 3. 
 
 ### Single-node training script
 Users can find the single-node training script example `src/train_example.sh` in this repo, to test if the training runs. Important flags:
