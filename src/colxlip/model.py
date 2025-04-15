@@ -14,13 +14,12 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 from functools import partial
-
+from open_clip.model import CLIP
 from open_clip.hf_model import HFTextEncoder
 from open_clip.modified_resnet import ModifiedResNet
 from open_clip.timm_model import TimmModel
 from .transformer import LayerNormFp32, LayerNorm, QuickGELU, Attention, VisionTransformer, TextTransformer, \
-    text_global_pool, \
-    PureAttentionPoolingBlock, VisionPostProcess, TextPostProcess
+    text_global_pool
 from open_clip.utils import to_2tuple
 
 
@@ -73,6 +72,7 @@ class CLIPTextCfg:
     final_ln_after_pool: bool = False  # apply final LayerNorm after pooling
     pool_type: str = 'argmax'
     proj_bias: bool = False
+    proj_type: str = 'linear'  # control final text projection, 'none' forces no projection
     output_tokens: bool = False
     act_kwargs: dict = None
     norm_kwargs: dict = None
@@ -455,9 +455,12 @@ def get_model_tokenize_cfg(model):
 
 
 
-class FLAIR(nn.Module):
-    output_dict: torch.jit.Final[bool]
-
+class ColXLIP(CLIP):
+    """
+    ColXLIP: A CLIP-based model that uses ColBERT-style token-level interactions
+    for computing similarity between images and text.
+    """
+    
     def __init__(
             self,
             embed_dim: int,
@@ -467,140 +470,218 @@ class FLAIR(nn.Module):
             init_logit_scale: float = np.log(1 / 0.07),
             init_logit_bias: Optional[float] = None,
             cast_dtype: Optional[torch.dtype] = None,
-            output_dict: bool = False
+            output_dict: bool = True,  # Default to True for ColXLIP
+            alpha: float = 0.5,  # Weight for combining global and token-level similarities
     ):
-        super().__init__()
-        self.output_dict = output_dict
+        """
+        Initialize ColXLIP model by inheriting from CLIP.
+        
+        Args:
+            embed_dim: Embedding dimension
+            vision_cfg: Vision tower configuration
+            text_cfg: Text tower configuration
+            quick_gelu: Whether to use QuickGELU activation
+            init_logit_scale: Initial logit scale
+            init_logit_bias: Initial logit bias
+            cast_dtype: Data type to cast to
+            output_dict: Whether to output a dictionary (always True for ColXLIP)
+            alpha: Weight for combining global and token-level similarities
+        """
+        # Make sure vision and text models output tokens
+        if isinstance(vision_cfg, dict):
+            vision_cfg = CLIPVisionCfg(**vision_cfg)
+        vision_cfg.output_tokens = True
+        
+        if isinstance(text_cfg, dict):
+            text_cfg = CLIPTextCfg(**text_cfg)
+        text_cfg.output_tokens = True
+        
+        # Initialize the parent CLIP class
+        super().__init__(
+            embed_dim=embed_dim,
+            vision_cfg=vision_cfg,
+            text_cfg=text_cfg,
+            quick_gelu=quick_gelu,
+            init_logit_scale=init_logit_scale,
+            init_logit_bias=init_logit_bias,
+            cast_dtype=cast_dtype,
+            output_dict=True,  # Always use output_dict=True for ColXLIP
+        )
+        self.visual.output_tokens = True
+        self.alpha = alpha
 
-        self.visual = _build_vision_tower(embed_dim, vision_cfg, quick_gelu, cast_dtype,
-                                          project_tokens=False, text_con=True, skip_final_pooling=False)
+        # Linear layers for token-level features    
+        # self.vision_token_layer = nn.Linear(vision_cfg.width, embed_dim)
+        # self.text_token_layer = nn.Linear(text_cfg.width, embed_dim)
 
-        self.visual_proj = PureAttentionPoolingBlock(context_dim=embed_dim)
-
-
-        text = _build_text_tower(embed_dim, text_cfg, quick_gelu, cast_dtype, text_con_pooling=True)
-        self.transformer = text.transformer
-        self.context_length = text.context_length
-        self.vocab_size = text.vocab_size
-        self.token_embedding = text.token_embedding
-        self.positional_embedding = text.positional_embedding
-        self.ln_final = text.ln_final
-        self.text_pool_type = text.pool_type
-        self.register_buffer('attn_mask', text.attn_mask, persistent=False)
-
-        self.logit_scale = nn.Parameter(torch.ones([]) * init_logit_scale)
-        if init_logit_bias is not None:
-            self.logit_bias = nn.Parameter(torch.ones([]) * init_logit_bias)
-        else:
-            self.logit_bias = None
-
-        self.image_post = VisionPostProcess(context_dim=self.visual.width,
-                                            output_dim=embed_dim,
-                                            normalize_final=False,
-                                            skip_ln=True)
-        self.text_post = TextPostProcess(context_dim=text.width,
-                                         output_dim=embed_dim,
-                                         normalize_final=False,
-                                         skip_ln=True)
-        self.text_projection = None
-        # we don't need text_projection at this point, text_post already does it
-
-    def lock_image_tower(self, unlocked_groups=0, freeze_bn_stats=False):
-        # lock image tower as per LiT - https://arxiv.org/abs/2111.07991
-        self.visual.lock(unlocked_groups=unlocked_groups, freeze_bn_stats=freeze_bn_stats)
-
-    @torch.jit.ignore
-    def set_grad_checkpointing(self, enable=True):
-        self.visual.set_grad_checkpointing(enable)
-        self.transformer.grad_checkpointing = enable
-
+        # Improved token projection layers with normalization and non-linearity
+        self.vision_token_layer = nn.Sequential(
+            nn.LayerNorm(vision_cfg.width),
+            nn.Linear(vision_cfg.width, embed_dim),
+            nn.GELU(),
+            nn.LayerNorm(embed_dim)
+        )
+        
+        self.text_token_layer = nn.Sequential(
+            nn.LayerNorm(text_cfg.width),
+            nn.Linear(text_cfg.width, embed_dim),
+            nn.GELU(),
+            nn.LayerNorm(embed_dim)
+        )
+    
     def encode_image(self, image, normalize: bool = False):
-        global_image_token, local_image_tokens = self.visual(image)
-        return global_image_token, local_image_tokens
-
-    def encode_text(self, text, normalize: bool = False, return_tokens: bool = True):
-        txt_dim = text.shape[-1]
+        """
+        Encode images to get token-level features and global features.
+        
+        Args:
+            image: Input images
+            normalize: Whether to normalize features
+            
+        Returns:
+            Tuple of (global_image_features, token_image_features)
+        """
+        # Get token features from the visual model
+        features, tokens = self.visual(image)
+        
+        # Apply projection if available
+        if self.vision_token_layer is not None and tokens is not None:
+            tokens = self.vision_token_layer(tokens)
+        
+        # Normalize if requested
+        if normalize:
+            features = F.normalize(features, dim=-1)
+            if tokens is not None:
+                tokens = F.normalize(tokens, dim=-1)
+        
+        return features, tokens
+    
+    def encode_text(self, text, normalize: bool = False):
+        """
+        Encode text to get token-level features and global features.
+        
+        Args:
+            text: Input text tokens
+            normalize: Whether to normalize features
+            
+        Returns:
+            Tuple of (global_text_features, token_text_features)
+        """
         cast_dtype = self.transformer.get_cast_dtype()
 
-        text = text.view(-1, txt_dim)  # (B*K, 77)
-
         x = self.token_embedding(text).to(cast_dtype)  # [batch_size, n_ctx, d_model]
-
         x = x + self.positional_embedding.to(cast_dtype)
         x = self.transformer(x, attn_mask=self.attn_mask)
-        x = self.ln_final(x)  # [B*K, n_ctx, transformer.width]
-        global_text_token, local_text_tokens = text_global_pool(x, text, self.text_pool_type)  # (B*K, L, D)
+        # Store token features before pooling
+        token_features = self.ln_final(x)  # [batch_size, n_ctx, transformer.width]
+
+        # Get pooled features
+        pooled_features = text_global_pool(token_features, text, self.text_pool_type)
+        
+        # Create a mask for token features that excludes the pooled token and all tokens after it
+        if self.text_pool_type == 'argmax':
+            # Create a mask where the pooled token position and all positions after it are False
+            batch_indices = torch.arange(text.shape[0], device=text.device)
+            pooled_indices = text.argmax(dim=-1)
+            
+            # Create a position mask for each sequence in the batch
+            seq_positions = torch.arange(text.shape[1], device=text.device).unsqueeze(0).expand(text.shape[0], -1)
+            mask = seq_positions < pooled_indices.unsqueeze(1)
+            
+            # Create a new tensor with zeros at the pooled token position and after
+            masked_token_features = torch.zeros_like(token_features)
+            masked_token_features[mask] = token_features[mask]
+            token_features = masked_token_features
+        
         if self.text_projection is not None:
             if isinstance(self.text_projection, nn.Linear):
-                global_text_token = self.text_projection(global_text_token)  # (B*K, N) as queries
-                local_text_tokens = self.text_projection(local_text_tokens)
+                pooled_features = self.text_projection(pooled_features)
             else:
-                global_text_token = global_text_token @ self.text_projection
-                local_text_tokens = local_text_tokens @ self.text_projection
+                pooled_features = pooled_features @ self.text_projection
+        
+        if self.text_token_layer is not None:
+            token_features = self.text_token_layer(token_features)
+            
+        # Normalize both token and pooled features if requested
+        if normalize:
+            pooled_features = F.normalize(pooled_features, dim=-1)
+            token_features = F.normalize(token_features, dim=-1)
 
-        return global_text_token, local_text_tokens
-
-    def get_logits(self, image, text):
+        return pooled_features, token_features
+    
+    def compute_colbert_similarity(self, token_image_features, token_text_features):
         """
-        FLAIR's way to get the logits. Only used as a minimal example to get the logits, not used in training or inference at this stage.
+        Compute token-level similarity. Given relative information between image and text tokens,
+        we only compute similarity from text tokens to image tokens, without considering the reverse.
+        This is based on the assumption that the image tokens are more informative than the text tokens, 
+        and we assume each text token is associated with image tokens while not vice versa.
+        
+        Args:
+            token_image_features: Token-level features from images [batch_size_img, n_img_tokens, embed_dim]
+            token_text_features: Token-level features from text [batch_size_txt, n_txt_tokens, embed_dim]
+            
+        Returns:
+            Token-level similarity matrix [batch_size_txt, batch_size_img], similar to global similarity, each entry with value in [-1, 1]
         """
-        global_image_token, local_image_tokens = self.encode_image(image)
-        global_text_token, _ = self.encode_text(text)
-        global_text_token = self.text_post(global_text_token) # (B*K, D)
-        global_image_token, local_image_tokens = self.image_post(global_image_token), self.image_post(
-            local_image_tokens) # (B, D), (B, L, D)
-        batch_size = global_image_token.shape[0]
 
-        # Broadcast the global text token to (B, B*K, D), this is too costly in large-scale training, so we downsample them to (B, B+K-1, D) in training
-        global_text_token = global_text_token.unsqueeze(0).expand(batch_size, -1, -1)
-
-        local_image_features = self.visual_proj(global_text_token, local_image_tokens, local_image_tokens) # (B, B*K, D)
-
-        text_features, image_features = F.normalize(global_text_token, dim=-1), F.normalize(local_image_features, dim=-1)
-
-        image_logits = self.logit_scale.exp() * torch.einsum('bij,bij->bi', image_features, text_features) # (B, B*K)
-        image_logits += self.logit_bias
-
-        text_logits = image_logits.T
-
-        return image_logits, text_logits
-
-    def get_logits_as_clip(self, image, text):
-        """
-        FLAIR could also generate the global-to-global logits as the original CLIP does.
-        """
-        global_image_token, _ = self.encode_image(image)
-        global_text_token, _ = self.encode_text(text)
-
-
-        global_image_token = self.image_post(global_image_token)  # (B, D)
-        global_text_token = self.text_post(global_text_token)  # (B*K, D)
-
-        image_features, text_features = F.normalize(global_image_token, dim=-1), F.normalize(global_text_token, dim=-1)
-
-        image_logits = self.logit_scale.exp() * image_features @ text_features.t()
-        text_logits = image_logits.T
-
-        return image_logits, text_logits
-
+        sim_matrix = torch.einsum('mnd,kqd->mknq', token_text_features, token_image_features)
+        max_sim_per_txt_token = torch.max(sim_matrix, dim=3)[0]
+        logits_per_text_token = max_sim_per_txt_token.mean(dim=-1) # value in [-1, 1]
+        return logits_per_text_token
+    
     def forward(
             self,
             image: Optional[torch.Tensor] = None,
             text: Optional[torch.Tensor] = None,
+            alpha: Optional[float] = None,
     ):
-        global_image_token, local_image_tokens = self.encode_image(image)
-        global_text_token, local_text_tokens = self.encode_text(text)
-        global_text_token, local_text_tokens = self.text_post(global_text_token), self.text_post(local_text_tokens)
-        global_image_token, local_image_tokens = self.image_post(global_image_token), self.image_post(local_image_tokens)
-
+        """
+        Forward pass of the ColXLIP model.
+        
+        Args:
+            image: Input images
+            text: Input text tokens
+            alpha: Weight for combining global and token-level similarities (overrides self.alpha if provided)
+            
+        Returns:
+            Dictionary containing similarity scores and features
+        """
+        if alpha is None:
+            alpha = self.alpha
+            
+        # Return empty dict if no inputs
+        if image is None and text is None:
+            return {}
+            
+        # Encode images and text to get token-level and global features
+        image_features, token_image_features = self.encode_image(image, normalize=True) if image is not None else (None, None)
+        text_features, token_text_features = self.encode_text(text, normalize=True) if text is not None else (None, None)
+        
         out_dict = {
-            "image_features": global_image_token,
-            "image_tokens": local_image_tokens,
-            "text_features": global_text_token,
-            "logit_scale": self.logit_scale.exp(),
-            "visual_proj": self.visual_proj
+            "image_features": image_features,
+            "text_features": text_features,
+            "token_image_features": token_image_features,
+            "token_text_features": token_text_features,
+            "logit_scale": self.logit_scale.exp()
         }
-
+        
         if self.logit_bias is not None:
             out_dict['logit_bias'] = self.logit_bias
+            
+        # # If both image and text are provided, compute similarities
+        # if image is not None and text is not None:
+        #     # Calculate global similarity (standard CLIP approach)
+        #     global_similarity = image_features @ text_features.T
+        #     out_dict["global_similarity"] = global_similarity
+            
+        #     # Calculate token-level similarity (ColBERT approach)
+        #     logits_per_text_token = self.compute_colbert_similarity(token_image_features, token_text_features)
+        #     out_dict["logits_per_text_token"] = logits_per_text_token
+        #     # Calculate token-level similarity from image tokens to text tokens
+        #     logits_per_image_token = logits_per_text_token.T
+        #     out_dict["logits_per_image_token"] = logits_per_image_token
+        #     # Combine global and token-level similarities
+        #     combined_similarity = alpha * global_similarity + (1 - alpha) * logits_per_image_token
+        #     out_dict["logits_per_image"] = combined_similarity
+        #     out_dict["logits_per_text"] = combined_similarity.T
+            
         return out_dict

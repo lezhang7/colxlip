@@ -119,6 +119,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
 
         #images, texts, img_ids = batch
         images, texts = batch
+        texts = texts[:,0]
         # values, counts = torch.unique(img_ids, return_counts=True)
         images = images.to(device=device, dtype=input_dtype, non_blocking=True)
         texts = texts.to(device=device, non_blocking=True)
@@ -131,9 +132,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 model_out = model(images, texts)
                 logit_scale = model_out["logit_scale"]
                 losses = loss(**model_out, output_dict=True)
-
-                total_loss = sum(losses.values())
-                losses["loss"] = total_loss
+                total_loss = losses["total_loss"]
 
             backward(total_loss, scaler)
         else:
@@ -181,8 +180,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                     losses = loss(**inputs, **inputs_no_accum, output_dict=True)
                     del inputs
                     del inputs_no_accum
-                    total_loss = sum(losses.values())
-                    losses["loss"] = total_loss
+                    total_loss = losses["total_loss"]
 
                 backward(total_loss, scaler)
 

@@ -2,7 +2,7 @@
 This code is adapted from OpenCLIP:
 https://github.com/mlfoundations/open_clip/blob/main/src/open_clip/factory.py
 
-The code integrates additional modifications and extensions to support the FLAIR models.
+The code integrates additional modifications and extensions to support the ColXLIP models.
 Original authors: ML Foundations.
 """
 import json
@@ -21,7 +21,7 @@ from open_clip.constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
 from open_clip.convert import convert_state_dict
 from open_clip.model import CLIP, CustomTextCLIP
 from .model import convert_weights_to_lp, convert_to_custom_text_state_dict, \
-    resize_pos_embed, get_cast_dtype, resize_text_pos_embed, set_model_preprocess_cfg, FLAIR
+    resize_pos_embed, get_cast_dtype, resize_text_pos_embed, set_model_preprocess_cfg, ColXLIP
 
 from open_clip.openai import load_openai_model
 from open_clip.pretrained import is_pretrained_cfg, get_pretrained_cfg, download_pretrained, \
@@ -29,7 +29,7 @@ from open_clip.pretrained import is_pretrained_cfg, get_pretrained_cfg, download
 from open_clip.transform import image_transform_v2, AugmentationCfg, PreprocessCfg, merge_preprocess_dict, \
     merge_preprocess_kwargs, image_transform
 from open_clip.tokenizer import HFTokenizer, SimpleTokenizer, DEFAULT_CONTEXT_LENGTH
-from .loss import FlairLoss
+from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, ColClipLoss
 
 HF_HUB_PREFIX = 'hf-hub:'
 _MODEL_CONFIG_PATHS = [Path(__file__).parent / f"model_configs/"]
@@ -188,6 +188,14 @@ def load_checkpoint(
     resize_pos_embed(state_dict, model)
     resize_text_pos_embed(state_dict, model)
 
+    # For ColXLIP models, filter the state dict to only include keys that exist in the model
+    if isinstance(model, ColXLIP):
+        # model_keys = set(model.state_dict().keys())
+        # state_dict = {k: v for k, v in state_dict.items() if k in model_keys}
+        # logging.info(f'Filtered state dict to {len(state_dict)} keys that match the ColXLIP model architecture')
+        # Always use non-strict loading for ColXLIP models
+        strict = False
+
     # Finally, load the massaged state_dict into model
     incompatible_keys = model.load_state_dict(state_dict, strict=strict)
     return incompatible_keys
@@ -275,11 +283,10 @@ def create_model(
 
         model_cfg = dict(model_cfg, **model_kwargs)  # merge cfg dict w/ kwargs (kwargs overrides cfg)
 
-        if "FLAIR" in model_name:
-            model = FLAIR(**model_cfg, cast_dtype=cast_dtype)
+        if "colxlip" in model_name:
+            model = ColXLIP(**model_cfg, cast_dtype=cast_dtype)
         else:
             model = CLIP(**model_cfg, cast_dtype=cast_dtype)
-
         if precision in ("fp16", "bf16"):
             dtype = torch.float16 if 'fp16' in precision else torch.bfloat16
             # manual mixed precision that matches original OpenAI behaviour
@@ -308,7 +315,14 @@ def create_model(
         pretrained_loaded = False
         if pretrained:
             checkpoint_path = ''
-            pretrained_cfg = get_pretrained_cfg(model_name, pretrained)
+            # Extract base model name for ColXLIP models
+            base_model_name = model_name
+            if "colxlip" in model_name:
+                # Extract the base model name by removing the colxlip suffix
+                base_model_name = model_name.replace("-colxlip", "")
+                logging.info(f'ColXLIP model detected. Using base model {base_model_name} for pretrained weights.')
+            
+            pretrained_cfg = get_pretrained_cfg(base_model_name, pretrained)
             if pretrained_cfg:
                 checkpoint_path = download_pretrained(pretrained_cfg, cache_dir=cache_dir)
                 preprocess_cfg = merge_preprocess_dict(preprocess_cfg, pretrained_cfg)
@@ -316,12 +330,12 @@ def create_model(
                 checkpoint_path = pretrained
 
             if checkpoint_path:
-                logging.info(f'Loading pretrained {model_name} weights ({pretrained}).')
-                load_checkpoint(model, checkpoint_path, strict=True)
+                logging.info(f'Loading pretrained {base_model_name} weights ({pretrained}) for {model_name}.')
+                load_checkpoint(model, checkpoint_path, strict=False)  # Using strict=False to allow parameter differences
             else:
                 error_str = (
-                    f'Pretrained weights ({pretrained}) not found for model {model_name}.'
-                    f' Available pretrained tags ({list_pretrained_tags_by_model(model_name)}.')
+                    f'Pretrained weights ({pretrained}) not found for model {base_model_name}.'
+                    f' Available pretrained tags ({list_pretrained_tags_by_model(base_model_name)}.')
                 logging.warning(error_str)
                 raise RuntimeError(error_str)
             pretrained_loaded = True
@@ -408,18 +422,40 @@ def create_model_and_transforms(
 
 
 def create_loss(args):
+    if "coca" in args.model.lower():
+        return CoCaLoss(
+            caption_loss_weight=args.coca_caption_loss_weight,
+            clip_loss_weight=args.coca_contrastive_loss_weight,
+            local_loss=args.local_loss,
+            gather_with_grad=args.gather_with_grad,
+            cache_labels=True,
+            rank=args.rank,
+            world_size=args.world_size,
+            use_horovod=args.horovod,
+        )
+    elif args.siglip:
+        assert not args.horovod, "Horovod not currently supported for SigLip"
+        return SigLipLoss(
+            rank=args.rank,
+            world_size=args.world_size,
+            dist_impl=args.loss_dist_impl,  # siglip has multiple distributed implementations to choose from
+        )
+    elif 'colxlip' in args.model.lower():
+        return ColClipLoss(
+            alpha=args.alpha,
+            local_loss=args.local_loss,
+            gather_with_grad=args.gather_with_grad,
+            cache_labels=True,
+            rank=args.rank,
+            world_size=args.world_size,
+            use_horovod=args.horovod,
+        )
 
-    if args.use_flair_loss:
-        if args.add_mps_loss:
-            return FlairLoss(rank=args.rank,
-                            world_size=args.world_size,
-                            num_cap_per_img=args.num_sampled_captions,
-                            added_mps_loss=True)
-        else:
-            return FlairLoss(rank=args.rank,
-                             world_size=args.world_size,
-                             num_cap_per_img=args.num_sampled_captions,
-                             added_mps_loss=False)
-
-    else:
-        raise NotImplementedError("Loss function for the given configuration is not implemented.")
+    return ClipLoss(
+        local_loss=args.local_loss,
+        gather_with_grad=args.gather_with_grad,
+        cache_labels=True,
+        rank=args.rank,
+        world_size=args.world_size,
+        use_horovod=args.horovod,
+    )

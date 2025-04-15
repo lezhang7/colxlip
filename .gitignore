@@ -1,0 +1,4 @@
+src/logs
+src/wandb/
+src/slurm_logs/
+

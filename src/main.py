@@ -32,10 +32,10 @@ from open_clip_train.logger import setup_logging
 from open_clip_train.scheduler import cosine_lr, const_lr, const_lr_cooldown
 from open_clip_train.file_utils import pt_load, check_exists, start_sync_process, remote_sync
 
-from flair.params import parse_args
-from flair.factory import create_model_and_transforms, get_tokenizer, create_loss
-from flair.train import train_one_epoch, evaluate
-from flair.data import get_data
+from colxlip.params import parse_args
+from colxlip.factory import create_model_and_transforms, get_tokenizer, create_loss
+from colxlip.train import train_one_epoch, evaluate
+from colxlip.data import get_data
 
 LATEST_CHECKPOINT_NAME = "epoch_latest.pt"
 

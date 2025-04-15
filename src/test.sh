@@ -1,0 +1,19 @@
+python -m main \
+    --log-every-n-steps 200 \
+    --report-to wandb \
+    --train-data '/home/mila/l/le.zhang/scratch/openclip/datasets/scraped_cc3m/{00000..00574}.tar'  \
+    --train-dataset-type webdataset  \
+    --caption-sampling-mode diverse_sampling \
+    --precision amp \
+    --batch-size=128 \
+    --train-num-samples 2823019 \
+    --lr=1e-5 \
+    --wd=0.1 \
+    --epochs=30 \
+    --workers=8 \
+    --beta1 0.9 \
+    --beta2 0.98 \
+    --wd 0.1 \
+    --eps 1e-8 \
+    --model ViT-B-32 \
+    --pretrained laion400m_e32
